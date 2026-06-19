@@ -89,7 +89,7 @@ Ces principes gouvernent toutes les étapes. Ils sont la vraie colonne vertébra
 
 *Hors scope : toute interface métier, tout appel LLM, toute base de données.*
 
-### Étape 2 — Contrats du noyau (les prises)
+### Étape 2 — Contrats du noyau (les prises)  ✅ `done`
 *On définit toutes les interfaces enfichables et types pivots dans `mm-core` — aucune implémentation.*
 
 1. **Types pivots** — `AgentContext`, `AgentStatus` (pending/running/done/blocked/trouble/KO), `AgentResponse` (contrat de sortie structurée : status, reason, output, tool_calls, sub_tasks), `TaskMessage`.
@@ -100,7 +100,7 @@ Ces principes gouvernent toutes les étapes. Ils sont la vraie colonne vertébra
 
 *Principe : définir toutes les prises, n'en remplir aucune.*
 
-### Étape 3 — Boucle agentique fiable
+### Étape 3 — Boucle agentique fiable  🔄 `running`
 *Le cœur du « gros périmètre de façon fiable ».*
 
 1. **Spike de dérisquage du JSON (go/no-go)** — avant d'écrire la boucle : valider empiriquement que le LLM produit du JSON fiable (>95 %) sur 2-3 modèles. Si non concluant, changer de modèle avant d'aller plus loin.

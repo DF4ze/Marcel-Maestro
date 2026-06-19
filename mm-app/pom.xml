@@ -38,6 +38,16 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- ÉTAPE 3 — SPIKE go/no-go (test only). Module modèle OpenAI de Spring AI,
+             utilisé pour parler à OpenRouter (API compatible OpenAI). Le client est
+             construit À LA MAIN dans le test (sans autoconfiguration) : aucune influence
+             sur le smoke test de démarrage, et aucune clé requise hors du spike. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-openai</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -47,6 +57,15 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- Le spike est tagué "spike" et EXCLU des builds normaux (mvn verify).
+                 Pour le lancer : mvn -pl mm-app test -Dgroups=spike (clé requise). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>spike</excludedGroups>
+                </configuration>
             </plugin>
         </plugins>
     </build>
