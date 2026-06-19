@@ -31,6 +31,16 @@
             <artifactId>spring-ai-client-chat</artifactId>
         </dependency>
 
+        <!-- Jackson : la sortie JSON EST la machine à états (ADR-006).
+             AgentResponse/AgentStatus portent le contrat de (dé)sérialisation et
+             AgentTool.inputSchema() expose un JsonNode. Déclaré explicitement (contrat
+             honnête) plutôt que pris en transitif. Version gérée par le BOM Spring Boot.
+             NON banni par le litmus de pureté (ni web, ni data, ni métier). -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
         <!-- Tests unitaires du noyau, isolés de tout consommateur (litmus SRP). -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

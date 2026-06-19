@@ -77,8 +77,9 @@ Ces principes gouvernent toutes les étapes. Ils sont la vraie colonne vertébra
 
 ## 3. Les étapes (H1) et leur détail (H2)
 
-### Étape 1 — Fondations & frontières
+### Étape 1 — Fondations & frontières  ✅ `done` (build vert le 2026-06-19)
 *Le projet compile, démarre, et prouve ses frontières de modules.*
+*Réalisé : mono-repo Maven (parent + mm-core / mm-spring-boot-starter / mm-app), litmus de pureté via maven-enforcer + CI GitLab, smoke test de démarrage. `mvn verify` validé vert sur poste Windows (Java 21).*
 
 1. **Squelette mono-repo Maven** — parent POM + 3 modules : `mm-core` (noyau pur), `mm-spring-boot-starter` (implémentations par défaut), `mm-app` (consommateur).
 2. **Règles de dépendances entre modules** — `mm-core` ne dépend que de Spring AI core ; interdits explicites (pas de `spring-data`, `spring-web`, ni rien de métier dans le noyau).
