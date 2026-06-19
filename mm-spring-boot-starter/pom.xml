@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ===================================================================
+         mm-spring-boot-starter — implémentations par défaut des ports du noyau.
+         À l'étape 1 : autoconfiguration VIDE (câble les beans, aucune logique).
+         =================================================================== -->
+
+    <parent>
+        <groupId>fr.ses10doigts</groupId>
+        <artifactId>marcel-maestro-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>mm-spring-boot-starter</artifactId>
+    <name>Marcel Maestro Spring Boot Starter</name>
+    <description>Implémentations par défaut des ports de mm-core (autoconfiguration)</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>fr.ses10doigts</groupId>
+            <artifactId>mm-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Mécanique d'autoconfiguration Spring Boot. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

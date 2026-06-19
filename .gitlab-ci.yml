@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# Marcel Maestro (MM) — CI de base (Étape 1, item 4)
+# Build vert obligatoire sur tous les modules + litmus de pureté du noyau.
+# ---------------------------------------------------------------------------
+image: maven:3.9-eclipse-temurin-21
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=WARN"
+  MAVEN_CLI_OPTS: "-B -ntp"
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - .m2/repository
+
+stages:
+  - build
+  - litmus
+
+# Build complet : compile + tests sur les 3 modules.
+build:
+  stage: build
+  script:
+    - mvn $MAVEN_CLI_OPTS verify
+
+# Litmus de pureté du noyau : mm-core compile/teste seul, et son arbre de
+# dépendances ne contient AUCUNE dépendance interdite (web, data, métier, app).
+core-purity-litmus:
+  stage: litmus
+  script:
+    - mvn $MAVEN_CLI_OPTS -pl mm-core test
+    - mvn $MAVEN_CLI_OPTS -pl mm-core dependency:tree > deps-core.txt
+    - "if grep -iE 'mm-app|facture|devis|stock|artisan|spring-web|spring-webmvc|spring-data' deps-core.txt; then echo 'VIOLATION DE FRONTIÈRE : dépendance interdite dans mm-core'; exit 1; fi"
+    - echo 'Noyau pur — aucune dépendance interdite détectée.'
+  artifacts:
+    when: always
+    paths:
+      - deps-core.txt

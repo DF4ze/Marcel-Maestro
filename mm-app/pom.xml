@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ===================================================================
+         mm-app — premier et seul consommateur (cockpit dev/devops).
+         À l'étape 1 : boote, charge l'autoconfiguration (vide) du starter,
+         log « noyau chargé ». Aucun métier, aucun LLM, aucune base de données.
+         =================================================================== -->
+
+    <parent>
+        <groupId>fr.ses10doigts</groupId>
+        <artifactId>marcel-maestro-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>mm-app</artifactId>
+    <name>Marcel Maestro App</name>
+    <description>Consommateur dev/devops du noyau Marcel Maestro</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>fr.ses10doigts</groupId>
+            <artifactId>mm-spring-boot-starter</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Socle Spring Boot minimal (pas de web à l'étape 1). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!-- Jar exécutable nommé mm-app.jar (sans suffixe de version). -->
+        <finalName>mm-app</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
