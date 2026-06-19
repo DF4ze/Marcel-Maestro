@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ===================================================================
+         mm-core — LE NOYAU PUR.
+         Ne dépend QUE de Spring AI core (spring-ai-client-chat).
+         INTERDITS (vérifiés par maven-enforcer ci-dessous) :
+           - spring-web / spring-webmvc / spring-boot-starter-web
+           - spring-data-*
+           - tout module consommateur (mm-app, mm-spring-boot-starter)
+           - toute logique métier
+         =================================================================== -->
+
+    <parent>
+        <groupId>fr.ses10doigts</groupId>
+        <artifactId>marcel-maestro-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>mm-core</artifactId>
+    <name>Marcel Maestro Core</name>
+    <description>Moteur agentique pur — aucune notion de métier ni d'environnement</description>
+
+    <dependencies>
+        <!-- Spring AI "core" : abstractions ChatClient. Adoptées à l'étape 2 (les prises). -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-client-chat</artifactId>
+        </dependency>
+
+        <!-- Tests unitaires du noyau, isolés de tout consommateur (litmus SRP). -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- LITMUS DE PURETÉ AUTOMATISÉ (Étape 1, item 3).
+                 Échoue le build si une dépendance interdite contamine le noyau. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>noyau-pur-litmus</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <message>
+                                        mm-core doit rester PUR : ni web, ni data, ni module consommateur, ni métier.
+                                    </message>
+                                    <excludes>
+                                        <exclude>org.springframework:spring-web</exclude>
+                                        <exclude>org.springframework:spring-webmvc</exclude>
+                                        <exclude>org.springframework:spring-webflux</exclude>
+                                        <exclude>org.springframework.boot:spring-boot-starter-web</exclude>
+                                        <exclude>org.springframework.boot:spring-boot-starter-webflux</exclude>
+                                        <exclude>org.springframework.data:*</exclude>
+                                        <exclude>org.springframework.boot:spring-boot-starter-data-*</exclude>
+                                        <exclude>fr.ses10doigts:mm-app</exclude>
+                                        <exclude>fr.ses10doigts:mm-spring-boot-starter</exclude>
+                                    </excludes>
+                                    <searchTransitive>true</searchTransitive>
+                                </bannedDependencies>
+                                <requireJavaVersion>
+                                    <version>[21,)</version>
+                                </requireJavaVersion>
+                            </rules>
+                            <fail>true</fail>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
