@@ -4,7 +4,12 @@ Prompts à coller dans une **nouvelle conversation du projet** pour lancer chaqu
 Le contexte projet (Marcel Maestro, agent Cortex, modules `mm-*`) est déjà en mémoire.
 La **roadmap (`docs/roadmap_v1.md`) reste la source de vérité**.
 
-Suivi : Étape 1 ✅ `done` · Étape 2 ✅ `done` · Étape 3 🔄 `running`.
+⚠️ **Règles de codage transverses obligatoires** (`docs/coding_rules.md`) : **Lombok partout**,
+**`@Slf4j` + logs** (`info` à chaque étape importante, `debug` sur les éléments clés à vérifier),
+**JavaDoc sur les méthodes**. Chaque prompt ci-dessous demande de lire ce fichier — elles
+s'appliquent à TOUT le code produit, à toutes les étapes.
+
+Suivi : Étape 1 ✅ `done` · Étape 2 ✅ `done` · Étape 3 🔄 build vert (spike LLM en attente) · Étape 4 ⏳ à lancer.
 
 ---
 
@@ -136,6 +141,9 @@ Avant tout, lis ces fichiers comme source de vérité (la roadmap prime) :
 - docs/adr.md → ADR-005 (HITL 4 niveaux ; le moteur décide QUAND, l'hôte décide COMMENT)
 - docs/points_bloquants.md → PB-04 (frontière : où vit ConsoleHumanInteraction —
   starter vs app) et PB-10 (sécurité, le HITL HIGH comme 1re ligne de défense)
+- docs/coding_rules.md → RÈGLES DE CODAGE OBLIGATOIRES : Lombok partout, @Slf4j + logs
+  (info aux étapes clés, debug sur les éléments à vérifier), JavaDoc sur les méthodes.
+  À appliquer à TOUT le code produit dans cette étape.
 
 Objectif : ajouter la couche de sécurité contextuelle qui complète le plancher dur de
 la passerelle. Le moteur décide QUAND demander (HitlGuard, dans mm-core) ; l'hôte décide
@@ -181,8 +189,71 @@ Hors scope : persistance ALLOW_PROJECT/ALLOW_ALWAYS (étape 5), canal Telegram/w
 
 ---
 
+## Étape 5 — Mémoire factuelle
+
+```
+Lance l'Étape 5 de la roadmap Marcel Maestro : « Mémoire factuelle ».
+Prérequis : l'Étape 4 (HITL) doit être terminée et le build vert — l'étape 5 PERSISTE
+les consentements ALLOW_PROJECT / ALLOW_ALWAYS définis à l'étape 4.
+
+Avant tout, lis ces fichiers comme source de vérité (la roadmap prime) :
+- docs/roadmap_v1.md → §3 Étape 5 (les 5 livrables H2)
+- docs/architecture_cible.md → §2.3 (port MemoryStore / MemoryEntry), §5 (mémoire
+  réconciliée : JpaMemoryStore → SQLite ; C6 fusionnée dans C3 via scope)
+- docs/adr.md → ADR-009 (C3/C6 fusionnées, scope comme attribut), ADR-013 (tenant dès
+  J1, non implémenté), ADR-014 (SQLite pour démarrer, PostgreSQL quand pgvector arrive)
+- docs/points_bloquants.md → PB-06 (propagation tenant — DIFFÉRÉE), PB-04 (frontières)
+- docs/coding_rules.md → RÈGLES DE CODAGE OBLIGATOIRES : Lombok partout, @Slf4j + logs
+  (info aux étapes clés, debug sur les éléments à vérifier), JavaDoc sur les méthodes.
+  À appliquer à TOUT le code produit dans cette étape (entité, repository, JpaMemoryStore…).
+
+Objectif : rendre persistants, au redémarrage, les faits utiles et la confiance accordée
+(consentements HITL projet/toujours). On REMPLIT la prise FactStore/MemoryStore définie
+à l'étape 2, avec une implémentation SQLite — SANS toucher au noyau.
+
+Livrables :
+1. Implémentation FactStore (SQLite) — put / get / findByScope / delete via Spring Data
+   JPA + SQLite (org.xerial:sqlite-jdbc). VA DANS mm-spring-boot-starter (implémentation
+   par défaut d'un port), JAMAIS dans mm-core.
+2. Schéma & migrations — table MemoryEntry (key, value, scope, tenant, createdAt,
+   updatedAt) via Flyway. Le champ tenant est PRÉSENT mais FIGÉ à "default" (couture
+   multi-artisan sans le coût). scope porte "global" | "project:<id>" | "session:<id>".
+3. Persistance des consentements HITL — ALLOW_PROJECT et ALLOW_ALWAYS écrits dans le
+   FactStore (clé du type hitl:<tool>:<scope>) et RECHARGÉS au démarrage de session,
+   avant le premier appel LLM. Brancher ça sur le ConsentCache de l'étape 4.
+4. Lecture/écriture de faits par l'agent — capture simple et EXPLICITE : un outil
+   « retiens ceci » et/ou un hook de fin de tâche. PAS de bus d'événements (différé).
+5. Litmus de pureté — vérifier qu'AUCUNE dépendance SQLite/JPA ne contamine mm-core
+   (l'enforcer de mm-core bannit déjà spring-data — ça doit rester vert).
+
+Contraintes :
+- mm-core reste PUR : la prise MemoryStore y est déjà définie (étape 2) ; l'implémentation
+  JPA/SQLite va dans le starter. Spring Data JPA et sqlite-jdbc ne descendent JAMAIS dans
+  le noyau (le litmus maven-enforcer le garantit).
+- Gotcha SQLite + Hibernate : prévoir un dialecte SQLite (ex. hibernate-community-dialects)
+  et la config Spring Data adéquate. À valider au premier build.
+- Tenant figé à "default" : aucune logique de filtrage multi-tenant (différée, PB-06).
+- Tests : repository JPA testé sur SQLite (fichier temp ou in-memory) ; vérifier le cycle
+  put → get → findByScope → delete et le rechargement des consentements au redémarrage.
+
+Méthode :
+- Crée une task list.
+- Propose-moi d'abord le schéma de table, la stratégie Flyway, l'emplacement des classes
+  (entité, repository, JpaMemoryStore) et le branchement sur le ConsentCache de l'étape 4,
+  pour validation AVANT d'écrire le code.
+- Puis implémente.
+- Vérification finale : je builderai sur mon poste Windows (Java 21, `mvn verify`) et je
+  testerai la persistance (arrêt/relance → consentement ALLOW_ALWAYS toujours actif).
+  Tu ne peux pas builder toi-même — conçois le travail pour ce mode.
+
+Hors scope : SemanticMemory / C4 vectorielle (reste vide), pgvector, PostgreSQL,
+distillation nocturne, bus d'événements, filtrage multi-tenant.
+```
+
+---
+
 ## Étapes suivantes
 
-Les prompts des étapes 5 à 8 seront ajoutés ici au fil de l'avancement (un prompt par
+Les prompts des étapes 6 à 8 seront ajoutés ici au fil de l'avancement (un prompt par
 étape, généré quand l'étape précédente est `done`).
 ```

@@ -7,9 +7,15 @@ import fr.ses10doigts.mm.core.agent.TaskMessage;
 import fr.ses10doigts.mm.core.engine.parse.AgentResponseParser;
 import fr.ses10doigts.mm.core.engine.parse.FinishReason;
 import fr.ses10doigts.mm.core.engine.parse.ParseOutcome;
+import fr.ses10doigts.mm.core.hitl.AgentNotification;
+import fr.ses10doigts.mm.core.hitl.ConsentDecision;
+import fr.ses10doigts.mm.core.hitl.HitlRequest;
+import fr.ses10doigts.mm.core.hitl.HumanInteraction;
+import fr.ses10doigts.mm.core.hitl.NotificationLevel;
 import fr.ses10doigts.mm.core.journal.Journal;
 import fr.ses10doigts.mm.core.journal.JournalEntry;
 import fr.ses10doigts.mm.core.prompt.SystemPromptComposer;
+import fr.ses10doigts.mm.core.tool.RiskLevel;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -40,9 +46,15 @@ import org.springframework.ai.chat.model.ChatResponse;
  * {@link ChatClient} l'est ; l'état d'une exécution vit dans des {@link LoopGuards}
  * locaux.</p>
  *
- * <p><strong>Hors scope étape 3</strong> : exécution réelle des {@code tool_calls}
- * (étape 6), délégation des {@code sub_tasks} au Dispatcher (étape 7), HITL sur
- * {@code blocked} (étape 4), error-triggered retrieval sur {@code trouble} (ADR-011).
+ * <p><strong>Étape 4</strong> : intégration du HITL sur {@code blocked}. Quand le LLM
+ * produit {@code status: blocked}, la boucle appelle {@link HumanInteraction#ask}
+ * (si disponible) et reprend sur {@code ALLOW} ou termine en {@code KO} sur
+ * {@code DENY}. Le garde-fou sur les tool_calls ({@link fr.ses10doigts.mm.core.hitl.HitlGuard})
+ * sera branché à l'étape 6, au même point que l'exécution des outils.</p>
+ *
+ * <p><strong>Hors scope</strong> : exécution réelle des {@code tool_calls}
+ * (étape 6), délégation des {@code sub_tasks} au Dispatcher (étape 7),
+ * error-triggered retrieval sur {@code trouble} (ADR-011).
  * Ces champs sont parsés et journalisés mais pas exécutés ici.</p>
  */
 public final class AgentLoop {
@@ -53,14 +65,39 @@ public final class AgentLoop {
     private final AgentStateMachine stateMachine;
     private final LoopConfig config;
     private final Journal journal;
+    private final HumanInteraction humanInteraction;
 
     /**
-     * @param chatClient     client Spring AI injecté (bean concret côté hôte)
-     * @param promptComposer composition du system prompt
-     * @param parser         parsing robuste de la sortie LLM
-     * @param stateMachine   routage par statut
-     * @param config         bornes de la boucle
-     * @param journal        journal append-only ; {@code null} accepté (pas de journal en V1)
+     * Constructeur complet (étape 4+).
+     *
+     * @param chatClient        client Spring AI injecté (bean concret côté hôte)
+     * @param promptComposer    composition du system prompt
+     * @param parser            parsing robuste de la sortie LLM
+     * @param stateMachine      routage par statut
+     * @param config            bornes de la boucle
+     * @param journal           journal append-only ; {@code null} accepté
+     * @param humanInteraction  canal humain pour le cas {@code BLOCKED} ; {@code null}
+     *                          accepté (le loop se comporte alors comme avant l'étape 4 :
+     *                          {@code BLOCKED} → terminaison immédiate)
+     */
+    public AgentLoop(ChatClient chatClient,
+                     SystemPromptComposer promptComposer,
+                     AgentResponseParser parser,
+                     AgentStateMachine stateMachine,
+                     LoopConfig config,
+                     Journal journal,
+                     HumanInteraction humanInteraction) {
+        this.chatClient = chatClient;
+        this.promptComposer = promptComposer;
+        this.parser = parser;
+        this.stateMachine = stateMachine;
+        this.config = config;
+        this.journal = journal;
+        this.humanInteraction = humanInteraction;
+    }
+
+    /**
+     * Constructeur rétro-compatible (sans HITL).
      */
     public AgentLoop(ChatClient chatClient,
                      SystemPromptComposer promptComposer,
@@ -68,12 +105,7 @@ public final class AgentLoop {
                      AgentStateMachine stateMachine,
                      LoopConfig config,
                      Journal journal) {
-        this.chatClient = chatClient;
-        this.promptComposer = promptComposer;
-        this.parser = parser;
-        this.stateMachine = stateMachine;
-        this.config = config;
-        this.journal = journal;
+        this(chatClient, promptComposer, parser, stateMachine, config, journal, null);
     }
 
     /**
@@ -157,10 +189,33 @@ public final class AgentLoop {
                 case TERMINATE_KO ->
                         { return terminate(agentId, ctx, AgentStatus.KO,
                                 reasonOr(last, "KO signalé par l'agent"), last, guards); }
-                case AWAIT_HUMAN ->
-                        { return terminate(agentId, ctx, AgentStatus.BLOCKED,
-                                reasonOr(last, "en attente d'une validation humaine (HITL, étape 4)"),
-                                last, guards); }
+                case AWAIT_HUMAN -> {
+                    if (humanInteraction != null && last != null) {
+                        String question = reasonOr(last,
+                                "L'agent demande une validation pour continuer");
+                        HitlRequest hitlReq = new HitlRequest(question, RiskLevel.HIGH, ctx);
+                        journal(agentId, ctx, "hitl_ask",
+                                Map.of("question", question, "riskLevel", "HIGH"));
+                        ConsentDecision decision = humanInteraction.ask(hitlReq);
+                        journal(agentId, ctx, "hitl_decision",
+                                Map.of("decision", decision.name()));
+                        if (decision == ConsentDecision.DENY) {
+                            humanInteraction.notify(new AgentNotification(
+                                    "Tâche refusée", "L'utilisateur a refusé la poursuite",
+                                    NotificationLevel.WARNING, ctx));
+                            return terminate(agentId, ctx, AgentStatus.KO,
+                                    "refusé par l'utilisateur", last, guards);
+                        }
+                        // Reprend la boucle avec la décision humaine comme contexte
+                        history.add(new UserMessage(
+                                "Validation humaine accordée (" + decision.name()
+                                        + "). Continue."));
+                    } else {
+                        return terminate(agentId, ctx, AgentStatus.BLOCKED,
+                                "en attente de validation humaine (pas de canal HITL disponible)",
+                                last, guards);
+                    }
+                }
                 case RETRY_REINFORCED -> history.add(new UserMessage(promptComposer.reinforcedRetry()));
                 case CONTINUE -> history.add(new UserMessage(promptComposer.continuation()));
             }

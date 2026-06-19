@@ -10,6 +10,8 @@ import fr.ses10doigts.mm.core.agent.TaskMessage;
 import fr.ses10doigts.mm.core.agent.TaskType;
 import fr.ses10doigts.mm.core.engine.parse.AgentResponseParser;
 import fr.ses10doigts.mm.core.engine.support.ScriptedChatModel;
+import fr.ses10doigts.mm.core.engine.support.ScriptedHumanInteraction;
+import fr.ses10doigts.mm.core.hitl.ConsentDecision;
 import fr.ses10doigts.mm.core.prompt.SystemPromptComposer;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -29,9 +31,14 @@ class AgentLoopTest {
     private static final String KO = "{\"status\":\"KO\",\"reason\":\"impossible\"}";
 
     private AgentLoop newLoop(LoopConfig config, ScriptedChatModel model) {
+        return newLoop(config, model, null);
+    }
+
+    private AgentLoop newLoop(LoopConfig config, ScriptedChatModel model,
+                              ScriptedHumanInteraction hitl) {
         ChatClient client = ChatClient.builder(model).build();
         return new AgentLoop(client, SystemPromptComposer.base(), new AgentResponseParser(),
-                new AgentStateMachine(), config, null);
+                new AgentStateMachine(), config, null, hitl);
     }
 
     private TaskMessage task() {
@@ -99,13 +106,61 @@ class AgentLoopTest {
     }
 
     @Test
-    void blocked_attenteHumaine() {
+    void blocked_sansHitl_termineBlocked() {
         ScriptedChatModel model = new ScriptedChatModel().reply(BLOCKED);
 
         AgentOutcome outcome = newLoop(LoopConfig.defaults(), model).run(task(), StopSignal.never());
 
         assertEquals(AgentStatus.BLOCKED, outcome.finalStatus());
-        assertEquals("besoin validation", outcome.terminationReason());
+        assertTrue(outcome.terminationReason().contains("pas de canal HITL"),
+                outcome.terminationReason());
+    }
+
+    @Test
+    void blocked_hitlAllow_reprendEtTermineDone() {
+        ScriptedChatModel model = new ScriptedChatModel()
+                .reply(BLOCKED) // 1re itération → BLOCKED → ask() → ALLOW
+                .reply(DONE);   // 2e itération → DONE
+        var hitl = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_ONCE);
+
+        AgentOutcome outcome = newLoop(LoopConfig.defaults(), model, hitl).run(task(), StopSignal.never());
+
+        assertEquals(AgentStatus.DONE, outcome.finalStatus());
+        assertEquals(2, outcome.iterations());
+        assertEquals(1, hitl.askCount(), "ask() appelé une fois");
+    }
+
+    @Test
+    void blocked_hitlDeny_termineKO() {
+        ScriptedChatModel model = new ScriptedChatModel().reply(BLOCKED);
+        var hitl = new ScriptedHumanInteraction().respond(ConsentDecision.DENY);
+
+        AgentOutcome outcome = newLoop(LoopConfig.defaults(), model, hitl).run(task(), StopSignal.never());
+
+        assertEquals(AgentStatus.KO, outcome.finalStatus());
+        assertTrue(outcome.terminationReason().contains("refusé"), outcome.terminationReason());
+        assertEquals(1, hitl.askCount());
+        assertEquals(1, hitl.notifyCount(), "notify(WARNING) envoyé sur refus");
+    }
+
+    @Test
+    void blocked_hitlAllowSession_reprisePuisBlockedDeNouveau_pasDeDeuximeDemande() {
+        // BLOCKED → ALLOW_SESSION → reprend → de nouveau BLOCKED → cache (pas de re-demande) → reprend → DONE
+        // Note : le cache de la boucle actuelle ne s'applique pas ici (c'est le HitlGuard qui cache).
+        // Sur BLOCKED, on appelle directement HumanInteraction.ask(), donc pas de cache dans la boucle.
+        // Ce test vérifie le scénario de multiple BLOCKED → chaque fois ask() est appelé.
+        ScriptedChatModel model = new ScriptedChatModel()
+                .reply(BLOCKED)
+                .reply(BLOCKED)
+                .reply(DONE);
+        var hitl = new ScriptedHumanInteraction()
+                .respond(ConsentDecision.ALLOW_SESSION, ConsentDecision.ALLOW_ONCE);
+
+        AgentOutcome outcome = newLoop(LoopConfig.defaults(), model, hitl).run(task(), StopSignal.never());
+
+        assertEquals(AgentStatus.DONE, outcome.finalStatus());
+        assertEquals(3, outcome.iterations());
+        assertEquals(2, hitl.askCount(), "BLOCKED dans la boucle = ask() à chaque fois");
     }
 
     @Test

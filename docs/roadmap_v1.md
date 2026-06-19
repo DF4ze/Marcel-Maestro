@@ -100,8 +100,9 @@ Ces principes gouvernent toutes les étapes. Ils sont la vraie colonne vertébra
 
 *Principe : définir toutes les prises, n'en remplir aucune.*
 
-### Étape 3 — Boucle agentique fiable  🔄 `running`
+### Étape 3 — Boucle agentique fiable  🔄 `running` (build vert ; spike go/no-go LLM en attente)
 *Le cœur du « gros périmètre de façon fiable ».*
+*Réalisé : boucle/engine implémentés et build vert. Provider pressenti pour le spike : OpenRouter (API compatible OpenAI) via `spring-ai-openai` en scope test. Le go/no-go empirique (JSON >95 %) reste à valider côté user.*
 
 1. **Spike de dérisquage du JSON (go/no-go)** — avant d'écrire la boucle : valider empiriquement que le LLM produit du JSON fiable (>95 %) sur 2-3 modèles. Si non concluant, changer de modèle avant d'aller plus loin.
 2. **System prompt & contrat de sortie** — prompt de base imposant le format `AgentResponse` ; vit dans le noyau, **extensible par l'hôte, pas remplaçable**.
@@ -111,16 +112,18 @@ Ces principes gouvernent toutes les étapes. Ils sont la vraie colonne vertébra
 
 *Hors scope : outils réels, mémoire persistante, spécialistes.*
 
-### Étape 4 — Garde-fou humain (HITL)
+### Étape 4 — Garde-fou humain (HITL)  🔄 `running`
 *Couche de sécurité contextuelle, complète le plancher dur de la passerelle.*
 
 1. **Politique RiskLevel → demande** — `LOW` = exécution directe ; `MEDIUM`/`HIGH`/`CRITICAL` = validation obligatoire ; configurable.
 2. **HitlGuard (décideur du « quand »)** — intercepte avant exécution, lit le `riskLevel`, consulte le cache, tranche.
 3. **Niveaux & cache de consentement** — `ponctuel`/`session` pleinement fonctionnels (cache in-memory) ; `projet`/`toujours` acceptés mais persistés à l'étape 5.
-4. **ConsoleHumanInteraction (le « comment »)** — première implémentation concrète d'un port : `ask()` (stdin) + `notify()`.
+4. **ConsoleHumanInteraction (le « comment »)** — première implémentation concrète d'un port : `ask()` (stdin) + `notify()`. Vit dans `mm-spring-boot-starter` avec `@ConditionalOnMissingBean` (décision PB-04 tranchée).
 5. **Intégration dans la boucle (cas `blocked`)** — `ask()` → attend → reprend si ALLOW, KO si DENY.
 
-*Hors scope : persistance projet/toujours (étape 5), canal web/Telegram (étape 8).*
+*Décision : le branchement du HitlGuard dans la boucle pour les tool_calls (consentement avant exécution) sera fait à l'étape 6, au même point que `AgentTool.execute()`. Le HitlGuard est conçu, testé et prêt dès l'étape 4 mais sans résolveur de riskLevel artificiel — l'intégration naturelle se fait avec le registre d'outils de l'étape 6.*
+
+*Hors scope : persistance projet/toujours (étape 5), canal web/Telegram (étape 8), interception tool_calls dans la boucle (étape 6).*
 
 ### Étape 5 — Mémoire factuelle
 *Les faits utiles et la confiance accordée survivent au redémarrage.*
