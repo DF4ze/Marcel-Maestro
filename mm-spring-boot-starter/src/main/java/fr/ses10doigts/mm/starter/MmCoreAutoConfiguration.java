@@ -9,23 +9,31 @@ import fr.ses10doigts.mm.core.hitl.HitlGuard;
 import fr.ses10doigts.mm.core.hitl.HitlPolicy;
 import fr.ses10doigts.mm.core.hitl.HumanInteraction;
 import fr.ses10doigts.mm.core.journal.Journal;
+import fr.ses10doigts.mm.core.memory.MemoryStore;
 import fr.ses10doigts.mm.core.prompt.SystemPromptComposer;
 import fr.ses10doigts.mm.core.prompt.SystemPromptExtension;
+import fr.ses10doigts.mm.starter.hitl.PersistentConsentCache;
+import fr.ses10doigts.mm.starter.memory.JpaMemoryStore;
+import fr.ses10doigts.mm.starter.memory.MemoryEntryRepository;
+import fr.ses10doigts.mm.starter.tool.RememberFactTool;
 import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.context.annotation.Bean;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 /**
  * Autoconfiguration du noyau Marcel Maestro.
  *
  * <p>Câble les composants <em>purs et déterministes</em> de la boucle agentique
  * ({@link SystemPromptComposer}, {@link AgentResponseParser}, {@link AgentStateMachine},
- * {@link LoopConfig}) et la couche HITL (étape 4 : {@link HitlPolicy}, {@link ConsentCache},
- * {@link HitlGuard}, {@link ConsoleHumanInteraction}).</p>
+ * {@link LoopConfig}), la couche HITL (étape 4 : {@link HitlPolicy}, {@link ConsentCache},
+ * {@link HitlGuard}, {@link ConsoleHumanInteraction}) et la mémoire factuelle (étape 5 :
+ * {@link JpaMemoryStore}, {@link PersistentConsentCache}, {@link RememberFactTool}).</p>
  *
  * <p>L'{@link AgentLoop} n'est créé que si un {@link ChatClient} est présent
  * ({@code @ConditionalOnBean}) : sans provider LLM, la boucle n'est pas câblée et le
@@ -35,6 +43,8 @@ import org.springframework.context.annotation.Bean;
  * starter de provider Spring AI choisi par l'hôte.</p>
  */
 @AutoConfiguration
+@EnableJpaRepositories(basePackages = "fr.ses10doigts.mm.starter.memory")
+@EntityScan(basePackages = "fr.ses10doigts.mm.starter.memory")
 public class MmCoreAutoConfiguration {
 
     @Bean
@@ -68,7 +78,29 @@ public class MmCoreAutoConfiguration {
         return LoopConfig.defaults();
     }
 
-    // ── HITL (étape 4) ──────────────────────────────────────────────────
+    // ── Mémoire factuelle (étape 5) ────────────────────────────────────
+
+    /**
+     * Implémentation JPA/SQLite du port {@link MemoryStore}. Vit dans le starter,
+     * jamais dans mm-core (litmus de pureté).
+     */
+    @Bean
+    @ConditionalOnMissingBean(MemoryStore.class)
+    public JpaMemoryStore jpaMemoryStore(MemoryEntryRepository repository) {
+        return new JpaMemoryStore(repository);
+    }
+
+    /**
+     * Outil « retiens ceci » — capture explicite de faits par l'agent.
+     * Prêt pour le registre d'outils de l'étape 6.
+     */
+    @Bean
+    @ConditionalOnMissingBean(RememberFactTool.class)
+    public RememberFactTool rememberFactTool(MemoryStore memoryStore) {
+        return new RememberFactTool(memoryStore);
+    }
+
+    // ── HITL (étape 4 + persistance étape 5) ────────────────────────────
 
     /**
      * Implémentation console par défaut du port {@link HumanInteraction}. Remplaçable
@@ -90,12 +122,17 @@ public class MmCoreAutoConfiguration {
     }
 
     /**
-     * Cache de consentement in-memory (durée de vie = session / process).
+     * Cache de consentement avec persistance SQLite (étape 5, livrable 3).
+     * Remplace le {@link ConsentCache} in-memory de l'étape 4 : les décisions
+     * {@code ALLOW_PROJECT}/{@code ALLOW_ALWAYS} survivent au redémarrage.
      */
     @Bean
-    @ConditionalOnMissingBean
-    public ConsentCache consentCache() {
-        return new ConsentCache();
+    @ConditionalOnMissingBean(ConsentCache.class)
+    public PersistentConsentCache consentCache(MemoryStore memoryStore,
+                                               MemoryEntryRepository repository) {
+        PersistentConsentCache cache = new PersistentConsentCache(memoryStore, repository);
+        cache.loadFromStore();
+        return cache;
     }
 
     /**

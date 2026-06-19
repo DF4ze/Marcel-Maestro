@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Thread-safe ({@link ConcurrentHashMap}). Pur noyau.</p>
  */
-public final class ConsentCache {
+public class ConsentCache {
 
     private final Map<String, ConsentDecision> cache = new ConcurrentHashMap<>();
 
