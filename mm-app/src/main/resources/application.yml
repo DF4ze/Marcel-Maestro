@@ -1,0 +1,87 @@
+# =====================================================================
+# Marcel Maestro (MM) — mm-app
+# Config principale. Les valeurs sensibles sont des PLACEHOLDERS via
+# variables d'environnement : renseigne-les avant de lancer.
+#   - OPENROUTER_API_KEY       : clé OpenRouter (provider LLM)
+#   - MM_TELEGRAM_BOT_TOKEN     : token du bot Telegram (BotFather)
+#   - MM_TELEGRAM_CHAT_ID       : chat id Telegram destinataire
+# =====================================================================
+
+spring:
+  application:
+    name: marcel-maestro
+
+  # Étape 8 — API REST de pilotage (ADR-017) : serveur web activé.
+  main:
+    web-application-type: servlet
+
+  # ── Étape 5 — Mémoire factuelle (SQLite, ADR-014) ──
+  datasource:
+    url: jdbc:sqlite:data/mm-memory.db
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+  ai:
+    # ── Provider LLM : OpenRouter (API compatible OpenAI) ──
+    # base-url sans /v1 : Spring AI ajoute /v1/chat/completions.
+    openai:
+      base-url: https://openrouter.ai/api
+      api-key: ${OPENROUTER_API_KEY:CHANGE_ME}
+      chat:
+        options:
+          model: openai/gpt-4o-mini
+    # ── Étape 6 — Client MCP passerelle VPS (désactivé tant qu'elle n'est pas branchée) ──
+    mcp:
+      client:
+        enabled: false
+
+# ── Marcel Maestro — configuration applicative (préfixe mm.*) ──
+mm:
+  # Étape 6 — Outils dev locaux & passerelle VPS
+  workspace:
+    root: ./workspace
+  vps:
+    gateway:
+      enabled: false
+
+  # Étape 7 — Orchestrateur minimal
+  dispatcher:
+    pool-size: 4
+    queue-capacity: 50
+
+  # Étape 8 — Pilotage & observabilité
+  journal:
+    base-path: ./logs/journal
+
+  # HITL multi-canal : "race" (Console + Telegram en parallèle) | "console" | "telegram"
+  # En service sans terminal (stdin indisponible), préférer "telegram".
+  hitl:
+    primary-channel: race
+
+  # Côté MM : destinataire et identifiant logique du bot.
+  telegram:
+    bot-id: mm-bot
+    chat-id: ${MM_TELEGRAM_CHAT_ID:CHANGE_ME}
+    ask-timeout-seconds: 300
+
+# =====================================================================
+# Telegram — module telegram-bots-mvc (asset réutilisable)
+# telegram.enabled=true active l'autoconfiguration MM côté Telegram.
+# Si le token n'est pas encore renseigné et que le bot ne démarre pas,
+# le canal Telegram est simplement absent (démarrage non bloqué) ; au
+# besoin, mettre telegram.enabled=false pour démarrer sans Telegram.
+#
+# ⚠️ La structure exacte de la config du token dépend du module
+# telegram-bots-mvc. Adapter la clé ci-dessous à celle qu'attend ton
+# module (placeholder fourni).
+# =====================================================================
+telegram:
+  enabled: true
+  bots:
+    mm-bot:
+      token: ${MM_TELEGRAM_BOT_TOKEN:CHANGE_ME}

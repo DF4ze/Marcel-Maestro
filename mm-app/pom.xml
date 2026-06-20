@@ -66,14 +66,14 @@
             <artifactId>spring-ai-starter-mcp-client</artifactId>
         </dependency>
 
-        <!-- ÉTAPE 3 — SPIKE go/no-go (test only). Module modèle OpenAI de Spring AI,
-             utilisé pour parler à OpenRouter (API compatible OpenAI). Le client est
-             construit À LA MAIN dans le test (sans autoconfiguration) : aucune influence
-             sur le smoke test de démarrage, et aucune clé requise hors du spike. -->
+        <!-- Provider LLM — OpenRouter (API compatible OpenAI), RUNTIME.
+             Le starter autoconfigure le ChatModel + ChatClient.Builder ; le bean ChatClient
+             est exposé par LlmConfiguration pour câbler la boucle Cortex (AgentLoop +
+             spécialistes, conditionnés @ConditionalOnBean(ChatClient.class)).
+             Inclut transitivement spring-ai-openai, utilisé par le spike test (étape 3). -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-openai</artifactId>
-            <scope>test</scope>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
     </dependencies>
 

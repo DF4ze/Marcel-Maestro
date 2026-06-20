@@ -1,0 +1,34 @@
+# =====================================================================
+# Tests mm-app — contexte isolé, AUCUNE dépendance externe.
+# SQLite in-memory partagé, web désactivé, Telegram coupé, clé LLM factice
+# (le ChatClient se câble mais aucun appel réseau au chargement du contexte).
+# =====================================================================
+spring:
+  application:
+    name: marcel-maestro
+  main:
+    web-application-type: none
+  datasource:
+    url: "jdbc:sqlite:file:testdb-app?mode=memory&cache=shared"
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  ai:
+    openai:
+      api-key: test-key
+      base-url: https://example.invalid
+    mcp:
+      client:
+        enabled: false
+
+mm:
+  hitl:
+    console:
+      enabled: false
+
+telegram:
+  enabled: false
