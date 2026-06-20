@@ -7,11 +7,11 @@ import fr.ses10doigts.mm.core.tool.AgentTool;
 import fr.ses10doigts.mm.core.tool.RiskLevel;
 import fr.ses10doigts.mm.core.tool.ToolException;
 import fr.ses10doigts.mm.core.tool.ToolResult;
+import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.mcp.client.McpSyncClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 

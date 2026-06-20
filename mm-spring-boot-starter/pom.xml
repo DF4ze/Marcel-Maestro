@@ -32,6 +32,12 @@
             <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
 
+        <!-- Journal JSONL : sérialisation Jackson explicite (contrat honnête). -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
         <!-- Lombok — coding rules : Lombok partout (@Slf4j, @RequiredArgsConstructor…). -->
         <dependency>
             <groupId>org.projectlombok</groupId>

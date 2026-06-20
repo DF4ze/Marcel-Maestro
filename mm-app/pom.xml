@@ -63,7 +63,7 @@
         <!-- Étape 6 — Client MCP pour la passerelle VPS. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-mcp-client-spring-boot-starter</artifactId>
+            <artifactId>spring-ai-starter-mcp-client</artifactId>
         </dependency>
 
         <!-- ÉTAPE 3 — SPIKE go/no-go (test only). Module modèle OpenAI de Spring AI,
@@ -82,10 +82,6 @@
         <finalName>mm-app</finalName>
         <plugins>
             <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
@@ -97,6 +93,10 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
             <!-- Le spike est tagué "spike" et EXCLU des builds normaux (mvn verify).
                  Pour le lancer : mvn -pl mm-app test -Dgroups=spike (clé requise). -->

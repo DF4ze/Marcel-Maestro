@@ -153,10 +153,11 @@ class DispatcherTest {
         queue.submit(userRequest("t1", "blocker"));
         queue.submit(userRequest("t2", "blocker"));
 
-        // t1 démarre, t2 attend
+        // t1 démarre, t2 attend dans le pool/executor
         assertTrue(firstStarted.await(5, TimeUnit.SECONDS));
         Thread.sleep(200);
-        assertEquals(1, executedCount.get(), "Seule t1 devrait être exécutée pour l'instant");
+        assertEquals(0, executedCount.get(), "Aucune tâche ne doit être terminée tant que t1 est bloquée");
+        assertEquals(1L, secondFinished.getCount(), "t2 ne doit pas se terminer avant la libération de t1");
 
         // Libérer t1 → t2 s'exécute
         releaseFirst.countDown();

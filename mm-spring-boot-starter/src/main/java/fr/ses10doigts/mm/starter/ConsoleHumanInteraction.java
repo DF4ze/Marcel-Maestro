@@ -35,6 +35,7 @@ public class ConsoleHumanInteraction implements CancellableHumanInteraction {
     private final InputStream inputStream;
     private final Scanner scanner;
     private final PrintStream out;
+    private final boolean pollConsoleInput;
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
 
     /**
@@ -54,6 +55,7 @@ public class ConsoleHumanInteraction implements CancellableHumanInteraction {
         this.inputStream = in;
         this.scanner = new Scanner(in);
         this.out = out;
+        this.pollConsoleInput = in == System.in;
     }
 
     /**
@@ -81,7 +83,11 @@ public class ConsoleHumanInteraction implements CancellableHumanInteraction {
 
         while (!cancelled.get()) {
             try {
-                if (inputStream.available() > 0 && scanner.hasNextLine()) {
+                if (canAttemptRead()) {
+                    if (!scanner.hasNextLine()) {
+                        log.info("Console ask() — fin de flux détectée, retour DENY");
+                        return ConsentDecision.DENY;
+                    }
                     String line = scanner.nextLine().trim().toUpperCase();
                     if (line.isEmpty()) {
                         out.print("  > ");
@@ -117,6 +123,21 @@ public class ConsoleHumanInteraction implements CancellableHumanInteraction {
         out.println("  [Réponse reçue sur un autre canal — attente console annulée]");
         log.info("Console ask() — annulé par un autre canal");
         return ConsentDecision.DENY;
+    }
+
+    /**
+     * Détermine si une lecture de ligne peut être tentée sans bloquer indéfiniment.
+     *
+     * <p>Avec {@code System.in}, on reste en mode polling pour préserver l'annulation
+     * multi-canal. Avec un flux injectable de test, on lit directement via le
+     * {@link Scanner} afin d'éviter les faux négatifs de {@link InputStream#available()}
+     * quand le scanner a déjà bufferisé les octets restants.</p>
+     *
+     * @return {@code true} si une tentative de lecture doit être faite maintenant
+     * @throws IOException si l'état du flux ne peut pas être vérifié
+     */
+    private boolean canAttemptRead() throws IOException {
+        return !pollConsoleInput || inputStream.available() > 0;
     }
 
     /**

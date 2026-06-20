@@ -33,6 +33,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -62,6 +63,12 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EntityScan(basePackages = "fr.ses10doigts.mm.starter.memory")
 @EnableConfigurationProperties({JournalProperties.class, HitlChannelProperties.class})
 public class MmCoreAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper().findAndRegisterModules();
+    }
 
     @Bean
     @ConditionalOnMissingBean
@@ -124,6 +131,8 @@ public class MmCoreAutoConfiguration {
      */
     @Bean("consoleHumanInteraction")
     @ConditionalOnMissingBean(ConsoleHumanInteraction.class)
+    @ConditionalOnProperty(prefix = "mm.hitl.console", name = "enabled", havingValue = "true",
+            matchIfMissing = true)
     public ConsoleHumanInteraction consoleHumanInteraction() {
         return new ConsoleHumanInteraction();
     }
