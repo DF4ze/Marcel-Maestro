@@ -35,7 +35,7 @@ public class MemoryEntryEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Integer id;
 
     @Column(name = "entry_key", nullable = false)
     private String entryKey;
