@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 class ConsoleHumanInteractionTest {
 
     private static final AgentContext CTX =
-            new AgentContext("default", "p1", "c1", "t1");
+            AgentContext.of("default", "p1", "c1", "t1");
 
     private ConsoleHumanInteraction withInput(String... lines) {
         String joined = String.join("\n", lines) + "\n";

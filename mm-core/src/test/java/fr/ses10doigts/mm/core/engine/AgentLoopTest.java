@@ -43,7 +43,7 @@ class AgentLoopTest {
 
     private TaskMessage task() {
         return new TaskMessage("t1", TaskType.USER_REQUEST, "cortex", "fais X",
-                new AgentContext("default", "p1", "c1", "t1"));
+                AgentContext.of("default", "p1", "c1", "t1"));
     }
 
     @Test

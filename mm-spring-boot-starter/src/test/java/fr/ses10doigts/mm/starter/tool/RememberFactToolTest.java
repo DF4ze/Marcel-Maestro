@@ -32,7 +32,7 @@ class RememberFactToolTest {
     @Autowired
     private MemoryStore memoryStore;
 
-    private final AgentContext ctx = new AgentContext("default", "test-project", "conv-1", "task-1");
+    private final AgentContext ctx = AgentContext.of("default", "test-project", "conv-1", "task-1");
 
     @Test
     @DisplayName("métadonnées de l'outil conformes")

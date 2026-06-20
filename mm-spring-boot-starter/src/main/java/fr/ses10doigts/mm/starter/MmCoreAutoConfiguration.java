@@ -12,13 +12,19 @@ import fr.ses10doigts.mm.core.journal.Journal;
 import fr.ses10doigts.mm.core.memory.MemoryStore;
 import fr.ses10doigts.mm.core.prompt.SystemPromptComposer;
 import fr.ses10doigts.mm.core.prompt.SystemPromptExtension;
+import fr.ses10doigts.mm.core.tool.AgentTool;
+import fr.ses10doigts.mm.core.tool.PathValidator;
+import fr.ses10doigts.mm.core.tool.ToolExecutionGuard;
+import fr.ses10doigts.mm.core.tool.ToolRegistry;
 import fr.ses10doigts.mm.starter.hitl.PersistentConsentCache;
 import fr.ses10doigts.mm.starter.memory.JpaMemoryStore;
 import fr.ses10doigts.mm.starter.memory.MemoryEntryRepository;
 import fr.ses10doigts.mm.starter.tool.RememberFactTool;
+import java.nio.file.Path;
 import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -32,8 +38,10 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  * <p>Câble les composants <em>purs et déterministes</em> de la boucle agentique
  * ({@link SystemPromptComposer}, {@link AgentResponseParser}, {@link AgentStateMachine},
  * {@link LoopConfig}), la couche HITL (étape 4 : {@link HitlPolicy}, {@link ConsentCache},
- * {@link HitlGuard}, {@link ConsoleHumanInteraction}) et la mémoire factuelle (étape 5 :
- * {@link JpaMemoryStore}, {@link PersistentConsentCache}, {@link RememberFactTool}).</p>
+ * {@link HitlGuard}, {@link ConsoleHumanInteraction}), la mémoire factuelle (étape 5 :
+ * {@link JpaMemoryStore}, {@link PersistentConsentCache}, {@link RememberFactTool}) et le
+ * système d'outils (étape 6 : {@link ToolRegistry}, {@link ToolExecutionGuard},
+ * {@link PathValidator}).</p>
  *
  * <p>L'{@link AgentLoop} n'est créé que si un {@link ChatClient} est présent
  * ({@code @ConditionalOnBean}) : sans provider LLM, la boucle n'est pas câblée et le
@@ -147,11 +155,49 @@ public class MmCoreAutoConfiguration {
         return new HitlGuard(policy, cache, interaction);
     }
 
+    // ── Outils (étape 6) ───────────────────────────────────────────────
+
+    /**
+     * Validateur de chemins anti path-traversal. Le workspace racine est configurable
+     * via {@code mm.workspace.root} (défaut {@code ./workspace}).
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public PathValidator pathValidator(
+            @Value("${mm.workspace.root:./workspace}") String workspaceRoot) {
+        return new PathValidator(Path.of(workspaceRoot));
+    }
+
+    /**
+     * Garde d'exécution transverse : HITL + path validation + timeout.
+     * Le {@link HitlGuard} est optionnel (absent = pas de consentement).
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public ToolExecutionGuard toolExecutionGuard(
+            ObjectProvider<HitlGuard> hitlGuard,
+            ObjectProvider<PathValidator> pathValidator) {
+        return new ToolExecutionGuard(hitlGuard.getIfAvailable(), pathValidator.getIfAvailable());
+    }
+
+    /**
+     * Registre central des outils déclarés. Collecte tous les beans {@link AgentTool}
+     * du contexte Spring. L'hôte enregistre ses outils comme beans ; le registre
+     * les rend disponibles au moteur.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public ToolRegistry toolRegistry(ObjectProvider<AgentTool> tools) {
+        List<AgentTool> toolList = tools.orderedStream().toList();
+        return new ToolRegistry(toolList);
+    }
+
     // ── AgentLoop ───────────────────────────────────────────────────────
 
     /**
      * Câblé uniquement si un {@link ChatClient} existe (provider LLM configuré). Le
-     * {@link Journal} et le {@link HumanInteraction} sont optionnels.
+     * {@link Journal}, le {@link HumanInteraction}, le {@link ToolRegistry} et le
+     * {@link ToolExecutionGuard} sont optionnels.
      */
     @Bean
     @ConditionalOnBean(ChatClient.class)
@@ -162,8 +208,11 @@ public class MmCoreAutoConfiguration {
                                AgentStateMachine stateMachine,
                                LoopConfig loopConfig,
                                ObjectProvider<Journal> journal,
-                               ObjectProvider<HumanInteraction> humanInteraction) {
+                               ObjectProvider<HumanInteraction> humanInteraction,
+                               ObjectProvider<ToolRegistry> toolRegistry,
+                               ObjectProvider<ToolExecutionGuard> toolExecutionGuard) {
         return new AgentLoop(chatClient, promptComposer, parser, stateMachine,
-                loopConfig, journal.getIfAvailable(), humanInteraction.getIfAvailable());
+                loopConfig, journal.getIfAvailable(), humanInteraction.getIfAvailable(),
+                toolRegistry.getIfAvailable(), toolExecutionGuard.getIfAvailable());
     }
 }

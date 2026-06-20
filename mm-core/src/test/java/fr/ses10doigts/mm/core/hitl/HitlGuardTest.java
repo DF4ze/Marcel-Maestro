@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 class HitlGuardTest {
 
     private static final AgentContext CTX =
-            new AgentContext("default", "p1", "c1", "t1");
+            AgentContext.of("default", "p1", "c1", "t1");
 
     // ── Mock scripté ─────────────────────────────────────────────────
 

@@ -30,7 +30,7 @@ class JpaMemoryStoreTest {
     @Autowired
     private MemoryStore memoryStore;
 
-    private final AgentContext ctx = new AgentContext("default", "test-project", "conv-1", "task-1");
+    private final AgentContext ctx = AgentContext.of("default", "test-project", "conv-1", "task-1");
 
     private MemoryEntry sampleEntry;
 
@@ -116,7 +116,7 @@ class JpaMemoryStoreTest {
         Instant now = Instant.now();
         memoryStore.put(new MemoryEntry("shared:key", "tenant-a", "global", "default", now, now));
 
-        AgentContext otherCtx = new AgentContext("other-tenant", "test-project", "conv-1", "task-1");
+        AgentContext otherCtx = AgentContext.of("other-tenant", "test-project", "conv-1", "task-1");
         Optional<MemoryEntry> result = memoryStore.get("shared:key", otherCtx);
         assertThat(result).isEmpty();
     }

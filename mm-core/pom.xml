@@ -41,6 +41,14 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
+        <!-- Lombok : annotations de confort (compile-time only, pas de dépendance runtime).
+             Ne viole pas le litmus de pureté (ni web, ni data, ni métier). -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Tests unitaires du noyau, isolés de tout consommateur (litmus SRP). -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -90,6 +98,21 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+
+            <!-- Lombok annotation processor (compile-time only). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
             </plugin>
         </plugins>
     </build>

@@ -137,8 +137,9 @@ Ces principes gouvernent toutes les étapes. Ils sont la vraie colonne vertébra
 
 *Hors scope : `SemanticMemory` (reste vide), vectoriel, distillation nocturne, bus d'événements.*
 
-### Étape 6 — Outils & passerelle VPS
+### Étape 6 — Outils & passerelle VPS  ✅ `done`
 *Le moteur touche le monde réel.*
+*Réalisé : AgentToolConverter (→ToolCallback Spring AI), ToolRegistry (liste blanche par agent), ToolExecutionGuard (HITL + PathValidator + timeout), idempotencyKey dans AgentContext, intégration tool_calls dans AgentLoop. Outils dev local : read_file, write_file, read_logs, maven_build. Passerelle VPS : vps_build, vps_build_and_deploy, vps_service_management (MCP client, @ConditionalOnProperty). 27 tests unitaires couvrant le pipeline. `mvn verify` à valider sur poste Windows.*
 
 1. **Adaptateur `AgentTool` → Spring AI** — converter interne qui expose les outils (avec leur `riskLevel`) au LLM ; l'hôte n'implémente que `AgentTool`.
 2. **Registre & injection par contexte** — chaque agent reçoit sa **liste blanche d'outils** à l'instanciation (déclarative, nominative) ; les outils non accordés sont invisibles du LLM.

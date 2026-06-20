@@ -35,4 +35,16 @@ public interface AgentTool {
      * @throws ToolException en cas d'échec d'exécution
      */
     ToolResult execute(Map<String, Object> params, AgentContext ctx) throws ToolException;
+
+    /**
+     * Durée maximale d'exécution de l'outil en millisecondes.
+     *
+     * <p>Au-delà, le {@code ToolExecutionGuard} interrompt l'exécution et retourne
+     * un {@link ToolResult#fail(String)}. Valeur par défaut : 30 secondes.</p>
+     *
+     * @return timeout en millisecondes
+     */
+    default long maxExecutionTimeMs() {
+        return 30_000L;
+    }
 }
