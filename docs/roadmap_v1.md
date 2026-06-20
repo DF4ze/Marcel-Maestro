@@ -112,7 +112,7 @@ Ces principes gouvernent toutes les étapes. Ils sont la vraie colonne vertébra
 
 *Hors scope : outils réels, mémoire persistante, spécialistes.*
 
-### Étape 4 — Garde-fou humain (HITL)  🔄 `running`
+### Étape 4 — Garde-fou humain (HITL)  ✅ `done`
 *Couche de sécurité contextuelle, complète le plancher dur de la passerelle.*
 
 1. **Politique RiskLevel → demande** — `LOW` = exécution directe ; `MEDIUM`/`HIGH`/`CRITICAL` = validation obligatoire ; configurable.
@@ -125,8 +125,9 @@ Ces principes gouvernent toutes les étapes. Ils sont la vraie colonne vertébra
 
 *Hors scope : persistance projet/toujours (étape 5), canal web/Telegram (étape 8), interception tool_calls dans la boucle (étape 6).*
 
-### Étape 5 — Mémoire factuelle
+### Étape 5 — Mémoire factuelle  ✅ `done`
 *Les faits utiles et la confiance accordée survivent au redémarrage.*
+*Réalisé : JpaMemoryStore (SQLite + Flyway), PersistentConsentCache (consentements projet/toujours rechargés au démarrage), RememberFactTool. Lombok/@Slf4j/JavaDoc appliqués.*
 
 1. **Implémentation `FactStore` (SQLite)** — `put`/`get`/`findByScope`/`delete` via Spring Data JPA + SQLite.
 2. **Schéma & migrations** — table `MemoryEntry` (key, value, scope, `tenant="default"`, timestamps) ; Flyway. Le `tenant` est présent mais figé — couture multi-artisan sans le coût.
