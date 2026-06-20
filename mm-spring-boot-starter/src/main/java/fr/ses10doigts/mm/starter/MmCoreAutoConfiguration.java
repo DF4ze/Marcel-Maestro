@@ -16,7 +16,12 @@ import fr.ses10doigts.mm.core.tool.AgentTool;
 import fr.ses10doigts.mm.core.tool.PathValidator;
 import fr.ses10doigts.mm.core.tool.ToolExecutionGuard;
 import fr.ses10doigts.mm.core.tool.ToolRegistry;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import fr.ses10doigts.mm.starter.hitl.CompositeHumanInteraction;
+import fr.ses10doigts.mm.starter.hitl.HitlChannelProperties;
 import fr.ses10doigts.mm.starter.hitl.PersistentConsentCache;
+import fr.ses10doigts.mm.starter.journal.FileJournal;
+import fr.ses10doigts.mm.starter.journal.JournalProperties;
 import fr.ses10doigts.mm.starter.memory.JpaMemoryStore;
 import fr.ses10doigts.mm.starter.memory.MemoryEntryRepository;
 import fr.ses10doigts.mm.starter.tool.RememberFactTool;
@@ -29,7 +34,9 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 /**
@@ -53,6 +60,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @AutoConfiguration
 @EnableJpaRepositories(basePackages = "fr.ses10doigts.mm.starter.memory")
 @EntityScan(basePackages = "fr.ses10doigts.mm.starter.memory")
+@EnableConfigurationProperties({JournalProperties.class, HitlChannelProperties.class})
 public class MmCoreAutoConfiguration {
 
     @Bean
@@ -111,13 +119,34 @@ public class MmCoreAutoConfiguration {
     // ── HITL (étape 4 + persistance étape 5) ────────────────────────────
 
     /**
-     * Implémentation console par défaut du port {@link HumanInteraction}. Remplaçable
-     * par tout bean déclaré par l'hôte (Telegram, web, etc.).
+     * Canal console du port {@link HumanInteraction}. Toujours créé comme canal
+     * individuel ; le Composite l'agrège avec les autres canaux éventuels (Telegram…).
      */
-    @Bean
-    @ConditionalOnMissingBean(HumanInteraction.class)
+    @Bean("consoleHumanInteraction")
+    @ConditionalOnMissingBean(ConsoleHumanInteraction.class)
     public ConsoleHumanInteraction consoleHumanInteraction() {
         return new ConsoleHumanInteraction();
+    }
+
+    /**
+     * Composite multi-canal (étape 8). Agrège tous les beans {@link HumanInteraction}
+     * (Console, Telegram…) et coordonne notify() (broadcast) et ask() (race ou canal
+     * nommé selon {@code mm.hitl.primary-channel}).
+     *
+     * <p>Marqué {@code @Primary} pour être injecté dans le {@link HitlGuard} et
+     * l'{@link AgentLoop} à la place des canaux individuels.</p>
+     */
+    @Bean
+    @Primary
+    @ConditionalOnMissingBean(CompositeHumanInteraction.class)
+    public CompositeHumanInteraction compositeHumanInteraction(
+            List<HumanInteraction> allChannels,
+            HitlChannelProperties channelProperties) {
+        // Filtrer le Composite lui-même pour éviter la récursion
+        List<HumanInteraction> channels = allChannels.stream()
+                .filter(ch -> !(ch instanceof CompositeHumanInteraction))
+                .toList();
+        return new CompositeHumanInteraction(channels, channelProperties.getPrimaryChannel());
     }
 
     /**
@@ -153,6 +182,17 @@ public class MmCoreAutoConfiguration {
     public HitlGuard hitlGuard(HitlPolicy policy, ConsentCache cache,
                                HumanInteraction interaction) {
         return new HitlGuard(policy, cache, interaction);
+    }
+
+    // ── Journal (étape 8) ──────────────────────────────────────────────
+
+    /**
+     * Journal JSONL append-only par agent/jour. Sert l'audit et le debug.
+     */
+    @Bean
+    @ConditionalOnMissingBean(Journal.class)
+    public FileJournal fileJournal(ObjectMapper objectMapper, JournalProperties journalProperties) {
+        return new FileJournal(objectMapper, Path.of(journalProperties.getBasePath()));
     }
 
     // ── Outils (étape 6) ───────────────────────────────────────────────

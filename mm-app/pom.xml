@@ -27,10 +27,31 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- Socle Spring Boot minimal (pas de web à l'étape 1). -->
+        <!-- Socle Spring Boot minimal. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Étape 8 — API REST de pilotage (ADR-017). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Étape 8 — Module multibot Telegram (asset réutilisable, install local).
+             Adaptateur TelegramHumanInteraction du port HumanInteraction (ADR-016). -->
+        <dependency>
+            <groupId>fr.ses10doigts</groupId>
+            <artifactId>telegram-bots-mvc</artifactId>
+            <version>1.5.4</version>
+        </dependency>
+
+        <!-- Lombok — coding rules. -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
@@ -63,6 +84,19 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
             </plugin>
             <!-- Le spike est tagué "spike" et EXCLU des builds normaux (mvn verify).
                  Pour le lancer : mvn -pl mm-app test -Dgroups=spike (clé requise). -->

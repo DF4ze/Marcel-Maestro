@@ -10,6 +10,7 @@ import fr.ses10doigts.mm.core.engine.StopSignal;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -132,6 +133,15 @@ public class Dispatcher {
      */
     public int activeCount() {
         return activeHandles.size();
+    }
+
+    /**
+     * Retourne les identifiants des tâches actuellement en cours d'exécution.
+     *
+     * @return ensemble non-modifiable des taskIds actifs
+     */
+    public Set<String> listActiveTaskIds() {
+        return Set.copyOf(activeHandles.keySet());
     }
 
     /**

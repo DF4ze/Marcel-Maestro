@@ -1,6 +1,6 @@
 # Roadmap d'implémentation — Marcel Maestro (MM) V1
-**Statut : Document de travail**
-**Date : 2026-06-19**
+**Statut : V1 implémentée (8/8 étapes done, mvn verify à valider Windows)**
+**Date : 2026-06-20**
 **Méthode d'élaboration : décomposition en largeur (toutes les grandes étapes H1, puis le détail H2 de chacune).**
 
 > **Nom du projet — tranché le 2026-06-19 : `Marcel Maestro`, alias `MM`.** Remplace les appellations provisoires « AgentLLM » / « SuperAgent ». Hiérarchie de nommage des modules : `mm-core` (noyau pur), `mm-spring-boot-starter` (implémentations par défaut), `mm-app` (consommateur dev/devops).
@@ -149,8 +149,9 @@ Ces principes gouvernent toutes les étapes. Ils sont la vraie colonne vertébra
 
 *Hors scope : outils métier artisan, email, génération de documents.*
 
-### Étape 7 — Orchestrateur minimal
+### Étape 7 — Orchestrateur minimal  ✅ `done`
 *Prouver les coutures (déléguer, router, rapporter, arrêter), pas le roster réel.*
+*Réalisé : TaskQueue (LinkedBlockingQueue), Dispatcher (poll + dispatch + stop), AgentFactory SPI, EchoSpecialist (démo), pool borné ThreadPoolTaskExecutor, STOP bout en bout. `mvn verify` à valider sur poste Windows.*
 
 1. **File de tâches typée (in-memory)** — `LinkedBlockingQueue<TaskMessage>` ; toute communication inter-agents y transite (pas de dialogue LLM↔LLM direct) ; non-durable (acceptable, documenté).
 2. **Dispatcher (permanent, non-LLM)** — poll la file, instancie l'agent assigné, le lance, route le résultat.
@@ -160,8 +161,9 @@ Ces principes gouvernent toutes les étapes. Ils sont la vraie colonne vertébra
 
 *Hors scope : roster réel, file durable, priorisation multi-projets, reprise sur crash.*
 
-### Étape 8 — Pilotage & observabilité
+### Étape 8 — Pilotage & observabilité  ✅ `done`
 *Conduire le système et savoir ce qu'il a fait. Intègre Telegram.*
+*Réalisé : FileJournal (JSONL append-only, sanitisation secrets), TaskController REST (submit/list/status/stop), CompositeHumanInteraction (multiplexeur race/nommé + CancellableHumanInteraction), ConsoleHumanInteraction enrichi (polling + cancellation), TelegramHumanInteraction (notify markdown + ask boutons inline + commandes /stop /status), TelegramMmAutoConfiguration conditionnelle. `mvn verify` à valider sur poste Windows.*
 
 1. **Journal d'actions (log fichier append-only)** — JSONL des décisions, tool_calls, résultats, transitions. Sert l'audit et le debug (et serait la matière première d'un futur apprentissage).
 2. **Audit des actions VPS** — toute mutation tracée ; la passerelle reste le point de passage unique qui journalise l'exécution réelle.
