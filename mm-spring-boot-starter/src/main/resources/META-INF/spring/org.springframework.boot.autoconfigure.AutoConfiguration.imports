@@ -1,1 +1,2 @@
 fr.ses10doigts.mm.starter.MmCoreAutoConfiguration
+fr.ses10doigts.mm.starter.orchestration.DispatcherAutoConfiguration
