@@ -1,5 +1,6 @@
 package fr.ses10doigts.mm.starter.orchestration;
 
+import fr.ses10doigts.mm.core.hitl.HumanInteraction;
 import fr.ses10doigts.mm.core.orchestration.AgentFactory;
 import fr.ses10doigts.mm.core.orchestration.Dispatcher;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
@@ -69,9 +70,11 @@ public class DispatcherAutoConfiguration {
     @ConditionalOnBean(AgentFactory.class)
     public Dispatcher dispatcher(TaskQueue taskQueue,
                                   ObjectProvider<AgentFactory> factories,
-                                  ThreadPoolTaskExecutor mmDispatcherExecutor) {
+                                  ThreadPoolTaskExecutor mmDispatcherExecutor,
+                                  ObjectProvider<HumanInteraction> humanInteractionProvider) {
         List<AgentFactory> factoryList = factories.orderedStream().toList();
-        dispatcher = new Dispatcher(taskQueue, factoryList, mmDispatcherExecutor);
+        HumanInteraction humanInteraction = humanInteractionProvider.getIfAvailable();
+        dispatcher = new Dispatcher(taskQueue, factoryList, mmDispatcherExecutor, humanInteraction);
         dispatcher.start();
         return dispatcher;
     }

@@ -100,12 +100,22 @@ public class TelegramHumanInteraction implements CancellableHumanInteraction {
                 notification.message(),
                 ctx);
 
+        log.info("Telegram notify() — tentative envoi botId={}, chatId={}, level={}, title={}",
+                botId, chatId, notification.level(), notification.title());
         try {
             sender.sendMarkdownMessage(botId, chatId, text);
-            log.info("Telegram notify() envoyé — level={}, title={}",
-                    notification.level(), notification.title());
+            log.info("Telegram notify() — envoyé avec succès");
         } catch (Exception e) {
-            log.info("Telegram notify() échoué : {}", e.getMessage());
+            log.warn("Telegram notify() — ÉCHEC envoi : {} ({})", e.getMessage(), e.getClass().getSimpleName(), e);
+            // Fallback : tentative en texte brut sans Markdown
+            try {
+                String plainText = String.format("%s %s\n%s",
+                        emoji, notification.title(), notification.message());
+                sender.sendMessage(botId, chatId, plainText);
+                log.info("Telegram notify() — fallback texte brut envoyé");
+            } catch (Exception e2) {
+                log.warn("Telegram notify() — ÉCHEC fallback aussi : {}", e2.getMessage());
+            }
         }
     }
 

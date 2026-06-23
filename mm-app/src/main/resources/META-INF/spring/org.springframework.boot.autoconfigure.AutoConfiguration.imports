@@ -1,0 +1,3 @@
+fr.ses10doigts.mm.app.config.LlmConfiguration
+fr.ses10doigts.mm.app.config.AppAgentsAutoConfiguration
+fr.ses10doigts.mm.app.telegram.TelegramMmAutoConfiguration

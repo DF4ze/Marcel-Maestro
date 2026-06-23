@@ -17,4 +17,7 @@ Thumbs.db
 
 # Logs
 *.log
+/logs/*
+
+# DB
 /data/mm-memory.db

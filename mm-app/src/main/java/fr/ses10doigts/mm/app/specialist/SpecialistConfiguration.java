@@ -6,8 +6,6 @@ import fr.ses10doigts.mm.core.journal.Journal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
@@ -21,16 +19,21 @@ import org.springframework.context.annotation.Configuration;
 public class SpecialistConfiguration {
 
     /**
-     * Spécialiste de démo — prouve le cycle complet de l'orchestrateur.
-     * Câblé uniquement si un {@link ChatClient} est présent.
+     * EchoSpecialist déplacé dans {@code AppAgentsAutoConfiguration} pour corriger
+     * le problème d'ordre d'évaluation de {@code @ConditionalOnBean} avec les
+     * auto-configurations Spring AI (ChatClient non encore enregistré au moment
+     * du parsing des {@code @Configuration} ordinaires).
+     *
+     * <p>Cette méthode est conservée en tant que documentation de la migration.</p>
+     *
+     * @deprecated Remplacé par {@code AppAgentsAutoConfiguration.echoSpecialist()}
      */
-    @Bean
-    @ConditionalOnBean(ChatClient.class)
-    public EchoSpecialist echoSpecialist(ChatClient chatClient,
-                                          AgentResponseParser parser,
-                                          AgentStateMachine stateMachine,
-                                          ObjectProvider<Journal> journal) {
-        log.info("EchoSpecialist enregistré comme spécialiste de démo");
+    @Deprecated(since = "étape-8", forRemoval = true)
+    // @Bean retiré intentionnellement — voir AppAgentsAutoConfiguration
+    public EchoSpecialist echoSpecialist_deprecated(ChatClient chatClient,
+                                                     AgentResponseParser parser,
+                                                     AgentStateMachine stateMachine,
+                                                     ObjectProvider<Journal> journal) {
         return new EchoSpecialist(chatClient, parser, stateMachine, journal.getIfAvailable());
     }
 }

@@ -7,6 +7,9 @@ import fr.ses10doigts.mm.core.agent.TaskMessage;
 import fr.ses10doigts.mm.core.agent.TaskType;
 import fr.ses10doigts.mm.core.engine.AgentOutcome;
 import fr.ses10doigts.mm.core.engine.StopSignal;
+import fr.ses10doigts.mm.core.hitl.AgentNotification;
+import fr.ses10doigts.mm.core.hitl.HumanInteraction;
+import fr.ses10doigts.mm.core.hitl.NotificationLevel;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
 import java.util.List;
 import java.util.Map;
@@ -43,23 +46,39 @@ public class Dispatcher {
     private final TaskQueue taskQueue;
     private final Map<String, AgentFactory> agentFactories;
     private final Executor executor;
+    private final HumanInteraction humanInteraction; // nullable — canal de notification des résultats
     private final ConcurrentHashMap<String, DispatcherHandle> activeHandles = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     /**
-     * Construit un Dispatcher.
+     * Construit un Dispatcher avec canal de notification (étape 8).
+     *
+     * @param taskQueue        file de tâches à consommer
+     * @param agentFactories   liste des factories d'agents disponibles
+     * @param executor         pool borné pour l'exécution des agents
+     * @param humanInteraction canal de notification pour renvoyer les réponses (nullable)
+     */
+    public Dispatcher(TaskQueue taskQueue, List<AgentFactory> agentFactories, Executor executor,
+                      HumanInteraction humanInteraction) {
+        this.taskQueue = taskQueue;
+        this.agentFactories = agentFactories.stream()
+                .collect(Collectors.toMap(AgentFactory::agentId, Function.identity()));
+        this.executor = executor;
+        this.humanInteraction = humanInteraction;
+        log.info("Dispatcher initialisé — {} factory(ies) enregistrée(s) : {}, notification={}",
+                this.agentFactories.size(), this.agentFactories.keySet(),
+                humanInteraction != null ? humanInteraction.getClass().getSimpleName() : "aucune");
+    }
+
+    /**
+     * Construit un Dispatcher sans canal de notification (rétro-compatibilité).
      *
      * @param taskQueue      file de tâches à consommer
      * @param agentFactories liste des factories d'agents disponibles
      * @param executor       pool borné pour l'exécution des agents
      */
     public Dispatcher(TaskQueue taskQueue, List<AgentFactory> agentFactories, Executor executor) {
-        this.taskQueue = taskQueue;
-        this.agentFactories = agentFactories.stream()
-                .collect(Collectors.toMap(AgentFactory::agentId, Function.identity()));
-        this.executor = executor;
-        log.info("Dispatcher initialisé — {} factory(ies) enregistrée(s) : {}",
-                this.agentFactories.size(), this.agentFactories.keySet());
+        this(taskQueue, agentFactories, executor, null);
     }
 
     /**
@@ -267,6 +286,59 @@ public class Dispatcher {
         if (originalTask.type() == TaskType.USER_REQUEST && !hasSubTasks(outcome)) {
             log.info("Tâche utilisateur terminée — taskId={}, status={}",
                     originalTask.taskId(), outcome.finalStatus().json());
+            notifyOutcome(originalTask, outcome);
+        }
+    }
+
+    /**
+     * Pousse le résultat d'une tâche utilisateur vers le canal de notification (Telegram, console…).
+     * Ne fait rien si aucun canal n'est configuré ou si le cortex n'a produit aucun output.
+     *
+     * @param originalTask la tâche origine
+     * @param outcome      le résultat de l'agent
+     */
+    private void notifyOutcome(TaskMessage originalTask, AgentOutcome outcome) {
+        if (humanInteraction == null) {
+            log.debug("notifyOutcome ignoré — aucun canal HumanInteraction configuré");
+            return;
+        }
+        boolean success = outcome.finalStatus() == AgentStatus.DONE;
+
+        String output;
+        if (success) {
+            output = (outcome.lastResponse() != null && outcome.lastResponse().output() != null)
+                    ? outcome.lastResponse().output()
+                    : "Tâche terminée sans output explicite.";
+        } else {
+            // Construire un message d'erreur lisible avec la raison de terminaison
+            StringBuilder sb = new StringBuilder();
+            if (outcome.lastResponse() != null && outcome.lastResponse().output() != null) {
+                sb.append(outcome.lastResponse().output());
+            } else if (outcome.terminationReason() != null && !outcome.terminationReason().isBlank()) {
+                sb.append(outcome.terminationReason());
+            } else {
+                sb.append("Le moteur s'est arrêté sur statut : ").append(outcome.finalStatus().json());
+            }
+            sb.append("\n_(").append(outcome.iterations()).append(" itération/s, statut=")
+              .append(outcome.finalStatus().json()).append(")_");
+            output = sb.toString();
+            log.warn("Tâche KO — taskId={}, raison='{}', iterations={}",
+                    originalTask.taskId(), outcome.terminationReason(), outcome.iterations());
+        }
+
+        AgentNotification notif = new AgentNotification(
+                success ? "✅ Réponse de Marcel" : "❌ Marcel n'a pas pu traiter ta demande",
+                output,
+                success ? NotificationLevel.SUCCESS : NotificationLevel.ERROR,
+                originalTask.ctx());
+
+        log.debug("notifyOutcome — envoi via {} — taskId={}, success={}",
+                humanInteraction.getClass().getSimpleName(), originalTask.taskId(), success);
+        try {
+            humanInteraction.notify(notif);
+            log.info("Notification envoyée — taskId={}, status={}", originalTask.taskId(), outcome.finalStatus().json());
+        } catch (Exception e) {
+            log.warn("Échec de la notification de fin de tâche — taskId={} : {}", originalTask.taskId(), e.getMessage());
         }
     }
 

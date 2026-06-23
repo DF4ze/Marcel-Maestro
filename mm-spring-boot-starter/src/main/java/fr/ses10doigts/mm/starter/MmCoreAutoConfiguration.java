@@ -18,6 +18,7 @@ import fr.ses10doigts.mm.core.tool.ToolExecutionGuard;
 import fr.ses10doigts.mm.core.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.ses10doigts.mm.starter.hitl.CompositeHumanInteraction;
+import lombok.extern.slf4j.Slf4j;
 import fr.ses10doigts.mm.starter.hitl.HitlChannelProperties;
 import fr.ses10doigts.mm.starter.hitl.PersistentConsentCache;
 import fr.ses10doigts.mm.starter.journal.FileJournal;
@@ -43,107 +44,100 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 /**
  * Autoconfiguration du noyau Marcel Maestro.
  *
- * <p>Câble les composants <em>purs et déterministes</em> de la boucle agentique
- * ({@link SystemPromptComposer}, {@link AgentResponseParser}, {@link AgentStateMachine},
- * {@link LoopConfig}), la couche HITL (étape 4 : {@link HitlPolicy}, {@link ConsentCache},
- * {@link HitlGuard}, {@link ConsoleHumanInteraction}), la mémoire factuelle (étape 5 :
- * {@link JpaMemoryStore}, {@link PersistentConsentCache}, {@link RememberFactTool}) et le
- * système d'outils (étape 6 : {@link ToolRegistry}, {@link ToolExecutionGuard},
- * {@link PathValidator}).</p>
+ * <p>Cable les composants purs de la boucle agentique, la couche HITL,
+ * la memoire factuelle et le systeme d'outils.</p>
  *
- * <p>L'{@link AgentLoop} n'est créé que si un {@link ChatClient} est présent
- * ({@code @ConditionalOnBean}) : sans provider LLM, la boucle n'est pas câblée et le
- * démarrage reste vert.</p>
- *
- * <p>Aucun bean concret de LLM n'est créé ici : le {@link ChatClient} est fourni par le
- * starter de provider Spring AI choisi par l'hôte.</p>
+ * <p>L'AgentLoop n'est cree que si un ChatClient est present : sans provider
+ * LLM, la boucle n'est pas cablee et le demarrage reste vert.</p>
  */
 @AutoConfiguration
 @EnableJpaRepositories(basePackages = "fr.ses10doigts.mm.starter.memory")
 @EntityScan(basePackages = "fr.ses10doigts.mm.starter.memory")
 @EnableConfigurationProperties({JournalProperties.class, HitlChannelProperties.class})
+@Slf4j
 public class MmCoreAutoConfiguration {
 
+    /** ObjectMapper partage. Conditionnel : Spring Boot fournit deja le sien. */
     @Bean
     @ConditionalOnMissingBean
     public ObjectMapper objectMapper() {
         return new ObjectMapper().findAndRegisterModules();
     }
 
+    /** Bean temoin de demarrage. */
     @Bean
     @ConditionalOnMissingBean
     public CoreLoadedBanner coreLoadedBanner() {
         return new CoreLoadedBanner();
     }
 
+    // composants purs boucle agentique
+
+    /** @return composeur de system prompt aggregeant les extensions hote */
     @Bean
     @ConditionalOnMissingBean
     public SystemPromptComposer systemPromptComposer(ObjectProvider<SystemPromptExtension> extensions) {
-        List<SystemPromptExtension> ordered = extensions.orderedStream().toList();
-        return new SystemPromptComposer(ordered);
+        return new SystemPromptComposer(extensions.orderedStream().toList());
     }
 
+    /** @return parseur de reponse LLM avec ObjectMapper par defaut */
     @Bean
     @ConditionalOnMissingBean
     public AgentResponseParser agentResponseParser() {
         return new AgentResponseParser();
     }
 
+    /** @return machine a etats sans etat, sûre a partager */
     @Bean
     @ConditionalOnMissingBean
     public AgentStateMachine agentStateMachine() {
         return new AgentStateMachine();
     }
 
+    /** @return parametres de bornage par defaut (25/3/5) */
     @Bean
     @ConditionalOnMissingBean
     public LoopConfig loopConfig() {
         return LoopConfig.defaults();
     }
 
-    // ── Mémoire factuelle (étape 5) ────────────────────────────────────
+    // memoire factuelle
 
-    /**
-     * Implémentation JPA/SQLite du port {@link MemoryStore}. Vit dans le starter,
-     * jamais dans mm-core (litmus de pureté).
-     */
+    /** @return implementation JPA du port MemoryStore */
     @Bean
     @ConditionalOnMissingBean(MemoryStore.class)
     public JpaMemoryStore jpaMemoryStore(MemoryEntryRepository repository) {
         return new JpaMemoryStore(repository);
     }
 
-    /**
-     * Outil « retiens ceci » — capture explicite de faits par l'agent.
-     * Prêt pour le registre d'outils de l'étape 6.
-     */
+    /** @return outil de capture explicite de faits par l'agent */
     @Bean
     @ConditionalOnMissingBean(RememberFactTool.class)
     public RememberFactTool rememberFactTool(MemoryStore memoryStore) {
         return new RememberFactTool(memoryStore);
     }
 
-    // ── HITL (étape 4 + persistance étape 5) ────────────────────────────
+    // HITL
 
     /**
-     * Canal console du port {@link HumanInteraction}. Toujours créé comme canal
-     * individuel ; le Composite l'agrège avec les autres canaux éventuels (Telegram…).
+     * Canal console. Desactivable via {@code mm.hitl.console.enabled=false}.
+     *
+     * @return adaptateur console (stdin/stdout)
      */
     @Bean("consoleHumanInteraction")
     @ConditionalOnMissingBean(ConsoleHumanInteraction.class)
-    @ConditionalOnProperty(prefix = "mm.hitl.console", name = "enabled", havingValue = "true",
-            matchIfMissing = true)
+    @ConditionalOnProperty(prefix = "mm.hitl.console", name = "enabled",
+            havingValue = "true", matchIfMissing = true)
     public ConsoleHumanInteraction consoleHumanInteraction() {
         return new ConsoleHumanInteraction();
     }
 
     /**
-     * Composite multi-canal (étape 8). Agrège tous les beans {@link HumanInteraction}
-     * (Console, Telegram…) et coordonne notify() (broadcast) et ask() (race ou canal
-     * nommé selon {@code mm.hitl.primary-channel}).
+     * Composite multi-canal. Marque Primary pour les injections de HumanInteraction.
      *
-     * <p>Marqué {@code @Primary} pour être injecté dans le {@link HitlGuard} et
-     * l'{@link AgentLoop} à la place des canaux individuels.</p>
+     * @param allChannels       tous les canaux declares
+     * @param channelProperties proprietes mm.hitl.*
+     * @return composite pret
      */
     @Bean
     @Primary
@@ -151,16 +145,18 @@ public class MmCoreAutoConfiguration {
     public CompositeHumanInteraction compositeHumanInteraction(
             List<HumanInteraction> allChannels,
             HitlChannelProperties channelProperties) {
-        // Filtrer le Composite lui-même pour éviter la récursion
+        log.info("MmCoreAutoConfiguration — assemblage CompositeHumanInteraction, {} bean(s) HumanInteraction détecté(s)",
+                allChannels.size());
+        allChannels.forEach(ch ->
+                log.info("  HumanInteraction candidat : {}", ch.getClass().getSimpleName()));
         List<HumanInteraction> channels = allChannels.stream()
                 .filter(ch -> !(ch instanceof CompositeHumanInteraction))
                 .toList();
+        log.info("  → {} canal/aux retenu(s) après filtrage du Composite lui-même", channels.size());
         return new CompositeHumanInteraction(channels, channelProperties.getPrimaryChannel());
     }
 
-    /**
-     * Politique HITL par défaut : seuil {@code MEDIUM}.
-     */
+    /** @return politique HITL par defaut (seuil MEDIUM) */
     @Bean
     @ConditionalOnMissingBean
     public HitlPolicy hitlPolicy() {
@@ -168,22 +164,28 @@ public class MmCoreAutoConfiguration {
     }
 
     /**
-     * Cache de consentement avec persistance SQLite (étape 5, livrable 3).
-     * Remplace le {@link ConsentCache} in-memory de l'étape 4 : les décisions
-     * {@code ALLOW_PROJECT}/{@code ALLOW_ALWAYS} survivent au redémarrage.
+     * Cache de consentement avec persistance SQLite.
+     *
+     * @param memoryStore store sous-jacent
+     * @param repository  acces JPA pour le rechargement initial
+     * @return cache pret (decisions pre-chargees)
      */
     @Bean
     @ConditionalOnMissingBean(ConsentCache.class)
-    public PersistentConsentCache consentCache(MemoryStore memoryStore,
-                                               MemoryEntryRepository repository) {
+    public PersistentConsentCache persistentConsentCache(MemoryStore memoryStore,
+                                                         MemoryEntryRepository repository) {
         PersistentConsentCache cache = new PersistentConsentCache(memoryStore, repository);
         cache.loadFromStore();
         return cache;
     }
 
     /**
-     * Garde-fou HITL : décide quand demander un consentement. Câblé uniquement si un
-     * {@link HumanInteraction} est disponible.
+     * Garde-fou HITL. Cable uniquement si un canal HumanInteraction existe.
+     *
+     * @param policy      politique de seuil de risque
+     * @param cache       cache de decisions
+     * @param interaction canal humain (primaire = Composite)
+     * @return garde initialise
      */
     @Bean
     @ConditionalOnMissingBean
@@ -193,10 +195,14 @@ public class MmCoreAutoConfiguration {
         return new HitlGuard(policy, cache, interaction);
     }
 
-    // ── Journal (étape 8) ──────────────────────────────────────────────
+    // journal
 
     /**
-     * Journal JSONL append-only par agent/jour. Sert l'audit et le debug.
+     * Journal JSONL append-only par agent/jour.
+     *
+     * @param objectMapper      serialiseur JSON
+     * @param journalProperties configuration mm.journal.*
+     * @return journal pret
      */
     @Bean
     @ConditionalOnMissingBean(Journal.class)
@@ -204,11 +210,13 @@ public class MmCoreAutoConfiguration {
         return new FileJournal(objectMapper, Path.of(journalProperties.getBasePath()));
     }
 
-    // ── Outils (étape 6) ───────────────────────────────────────────────
+    // outils
 
     /**
-     * Validateur de chemins anti path-traversal. Le workspace racine est configurable
-     * via {@code mm.workspace.root} (défaut {@code ./workspace}).
+     * Validateur de chemins anti path-traversal.
+     *
+     * @param workspaceRoot racine autorisee (defaut ./workspace)
+     * @return validateur
      */
     @Bean
     @ConditionalOnMissingBean
@@ -218,35 +226,49 @@ public class MmCoreAutoConfiguration {
     }
 
     /**
-     * Garde d'exécution transverse : HITL + path validation + timeout.
-     * Le {@link HitlGuard} est optionnel (absent = pas de consentement).
+     * Garde d'execution transverse : HITL + path validation + timeout.
+     *
+     * @param hitlGuard     garde HITL optionnel
+     * @param pathValidator validateur de chemins optionnel
+     * @return garde configure
      */
     @Bean
     @ConditionalOnMissingBean
     public ToolExecutionGuard toolExecutionGuard(
             ObjectProvider<HitlGuard> hitlGuard,
             ObjectProvider<PathValidator> pathValidator) {
-        return new ToolExecutionGuard(hitlGuard.getIfAvailable(), pathValidator.getIfAvailable());
+        return new ToolExecutionGuard(
+                hitlGuard.getIfAvailable(), pathValidator.getIfAvailable());
     }
 
     /**
-     * Registre central des outils déclarés. Collecte tous les beans {@link AgentTool}
-     * du contexte Spring. L'hôte enregistre ses outils comme beans ; le registre
-     * les rend disponibles au moteur.
+     * Registre central des outils. Collecte tous les AgentTool beans du contexte.
+     *
+     * @param tools tous les AgentTool beans (peuvent etre absents)
+     * @return registre peuple
      */
     @Bean
     @ConditionalOnMissingBean
     public ToolRegistry toolRegistry(ObjectProvider<AgentTool> tools) {
-        List<AgentTool> toolList = tools.orderedStream().toList();
-        return new ToolRegistry(toolList);
+        return new ToolRegistry(tools.orderedStream().toList());
     }
 
-    // ── AgentLoop ───────────────────────────────────────────────────────
+    // AgentLoop
 
     /**
-     * Câblé uniquement si un {@link ChatClient} existe (provider LLM configuré). Le
-     * {@link Journal}, le {@link HumanInteraction}, le {@link ToolRegistry} et le
-     * {@link ToolExecutionGuard} sont optionnels.
+     * Boucle agentique principale. Cablee uniquement si un ChatClient existe.
+     * Journal, HumanInteraction, ToolRegistry et ToolExecutionGuard sont optionnels.
+     *
+     * @param chatClient         client LLM Spring AI
+     * @param promptComposer     composeur de system prompt
+     * @param parser             parseur de reponses
+     * @param stateMachine       machine a etats
+     * @param loopConfig         parametres de bornage
+     * @param journal            journal optionnel
+     * @param humanInteraction   canal HITL optionnel
+     * @param toolRegistry       registre d'outils optionnel
+     * @param toolExecutionGuard garde d'execution optionnel
+     * @return boucle agentique prete
      */
     @Bean
     @ConditionalOnBean(ChatClient.class)

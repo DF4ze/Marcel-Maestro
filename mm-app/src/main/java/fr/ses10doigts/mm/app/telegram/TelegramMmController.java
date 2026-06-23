@@ -1,12 +1,18 @@
 package fr.ses10doigts.mm.app.telegram;
 
+import fr.ses10doigts.mm.core.agent.AgentContext;
+import fr.ses10doigts.mm.core.agent.TaskMessage;
+import fr.ses10doigts.mm.core.agent.TaskType;
 import fr.ses10doigts.mm.core.hitl.ConsentDecision;
 import fr.ses10doigts.mm.core.orchestration.Dispatcher;
+import fr.ses10doigts.mm.core.queue.TaskQueue;
 import fr.ses10doigts.telegrambots.model.TelegramUpdateContext;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.CallbackQuery;
+import fr.ses10doigts.telegrambots.service.poller.handler.annot.Chat;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.Command;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.TelegramController;
 import java.util.Set;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -18,6 +24,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
  * des boutons inline HITL (5 handlers à valeur fixe, un par {@link ConsentDecision}).
  * Le {@link Dispatcher} est injecté via {@link ObjectProvider} car il peut être absent
  * si aucune {@link fr.ses10doigts.mm.core.orchestration.AgentFactory} n'est déclarée.</p>
+ *
+ * <p>Le handler {@link #chat(TelegramUpdateContext)} soumet le message de l'utilisateur
+ * dans la {@link TaskQueue} comme un {@code USER_REQUEST} destiné au cortex. La réponse
+ * est renvoyée de façon asynchrone via {@link TelegramHumanInteraction#notify} quand
+ * le Dispatcher clôture la tâche.</p>
  */
 @TelegramController
 @ConditionalOnProperty(prefix = "telegram", name = "enabled", havingValue = "true")
@@ -26,17 +37,67 @@ public class TelegramMmController {
 
     private final ObjectProvider<Dispatcher> dispatcherProvider;
     private final ObjectProvider<TelegramHumanInteraction> telegramProvider;
+    private final TaskQueue taskQueue;
 
     /**
      * Construit le contrôleur Telegram MM.
      *
      * @param dispatcherProvider provider du Dispatcher (optionnel)
      * @param telegramProvider   provider du TelegramHumanInteraction (optionnel)
+     * @param taskQueue          file de tâches (toujours présente si le starter est chargé)
      */
     public TelegramMmController(ObjectProvider<Dispatcher> dispatcherProvider,
-                                 ObjectProvider<TelegramHumanInteraction> telegramProvider) {
+                                 ObjectProvider<TelegramHumanInteraction> telegramProvider,
+                                 TaskQueue taskQueue) {
         this.dispatcherProvider = dispatcherProvider;
         this.telegramProvider = telegramProvider;
+        this.taskQueue = taskQueue;
+    }
+
+    // ── Chat ────────────────────────────────────────────────────────
+
+    /**
+     * Reçoit un message libre de l'utilisateur, le soumet au cortex via la
+     * {@link TaskQueue} et retourne un accusé de réception immédiat.
+     *
+     * <p>La réponse effective sera poussée de manière asynchrone par
+     * {@link TelegramHumanInteraction#notify} quand le Dispatcher clôture la tâche.</p>
+     *
+     * @param ctx contexte de l'update Telegram
+     * @return accusé de réception avec le taskId court
+     */
+    @Chat
+    public String chat(TelegramUpdateContext ctx) {
+        String text = ctx.getText();
+        if (text == null || text.isBlank()) {
+            return "Je n'ai pas reçu de texte.";
+        }
+
+        Dispatcher dispatcher = dispatcherProvider.getIfAvailable();
+        if (dispatcher == null) {
+            log.warn("Telegram chat — DISPATCHER ABSENT. Vérifie que CortexFactory, AgentLoop et ChatClient sont bien câblés."
+                    + " TelegramHI={}", telegramProvider.getIfAvailable() != null ? "présent" : "absent");
+            return "⚠️ Le moteur agent n'est pas démarré (aucune AgentFactory configurée).";
+        }
+
+        String taskId = UUID.randomUUID().toString();
+        String conversationId = ctx.getChatId() != null
+                ? String.valueOf(ctx.getChatId())
+                : "telegram";
+
+        TaskMessage message = new TaskMessage(
+                taskId,
+                TaskType.USER_REQUEST,
+                "cortex",
+                text,
+                AgentContext.of("default", "none", conversationId, taskId));
+
+        taskQueue.submit(message);
+        log.info("Telegram chat — tâche soumise taskId={}, texte='{}'",
+                taskId, truncate(text, 60));
+
+        return String.format("⏳ Message reçu (tâche `%s`). Je traite, tu recevras la réponse dans un instant…",
+                truncate(taskId, 8));
     }
 
     // ── Commandes ────────────────────────────────────────────────────────

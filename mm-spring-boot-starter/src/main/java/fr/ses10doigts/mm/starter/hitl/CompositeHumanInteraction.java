@@ -10,6 +10,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -33,6 +35,7 @@ import lombok.extern.slf4j.Slf4j;
  * transparent — zéro overhead.</p>
  */
 @Slf4j
+@Data
 public class CompositeHumanInteraction implements HumanInteraction {
 
     private final List<HumanInteraction> channels;
@@ -53,7 +56,7 @@ public class CompositeHumanInteraction implements HumanInteraction {
         log.info("CompositeHumanInteraction initialisé — {} canal/aux, mode ask()={}",
                 this.channels.size(), primaryChannel);
         for (HumanInteraction ch : this.channels) {
-            log.debug("  Canal enregistré : {}", ch.getClass().getSimpleName());
+            log.info("  → canal HITL : {}", ch.getClass().getSimpleName());
         }
     }
 
@@ -88,7 +91,7 @@ public class CompositeHumanInteraction implements HumanInteraction {
     @Override
     public ConsentDecision ask(HitlRequest request) {
         if (channels.size() == 1) {
-            return channels.get(0).ask(request);
+            return channels.getFirst().ask(request);
         }
 
         if ("race".equalsIgnoreCase(primaryChannel)) {
