@@ -185,9 +185,10 @@ public final class AgentLoop {
 
             ParseOutcome outcome = parser.parse(text, finishReason);
             AgentStatus status;
-            if (outcome instanceof ParseOutcome.Parsed parsed) {
-                last = parsed.response();
+            if (outcome instanceof ParseOutcome.Parsed(AgentResponse response)) {
+                last = response;
                 status = last.status();
+                assert text != null;
                 history.add(new AssistantMessage(text));
             } else {
                 ParseOutcome.Failure failure = (ParseOutcome.Failure) outcome;
@@ -282,8 +283,7 @@ public final class AgentLoop {
                                 reasonOr(last, "KO signalé par l'agent"), last, guards); }
                 case AWAIT_HUMAN -> {
                     if (humanInteraction != null && last != null) {
-                        String question = reasonOr(last,
-                                "L'agent demande une validation pour continuer");
+                        String question = buildHitlQuestion(last);
                         HitlRequest hitlReq = new HitlRequest(question, RiskLevel.HIGH, ctx);
                         journal(agentId, ctx, "hitl_ask",
                                 Map.of("question", question, "riskLevel", "HIGH"));
@@ -324,6 +324,38 @@ public final class AgentLoop {
                 "reason", String.valueOf(reason),
                 "iterations", guards.iterations()));
         return new AgentOutcome(status, last, guards.iterations(), reason);
+    }
+
+    /**
+     * Construit la question HITL affichée à l'utilisateur quand le LLM passe en {@code blocked}.
+     *
+     * <p>Combine le {@code reason} du LLM (ce qu'il veut faire et pourquoi) avec les
+     * {@code tool_calls} planifiés (outil + paramètres exacts), pour que l'utilisateur
+     * puisse prendre une décision éclairée — et non à l'aveugle.</p>
+     *
+     * @param last dernière réponse LLM (statut blocked)
+     * @return question lisible pour l'humain
+     */
+    private static String buildHitlQuestion(AgentResponse last) {
+        String reason = reasonOr(last, "L'agent demande une validation pour continuer");
+
+        List<ToolCall> calls = (last != null && last.toolCalls() != null)
+                ? last.toolCalls()
+                : List.of();
+
+        if (calls.isEmpty()) {
+            return reason;
+        }
+
+        StringBuilder sb = new StringBuilder(reason).append("\n\nAction(s) planifiée(s) :");
+        for (ToolCall call : calls) {
+            sb.append("\n  ▸ ").append(call.tool());
+            if (call.params() != null && !call.params().isEmpty()) {
+                call.params().forEach((k, v) ->
+                        sb.append("\n      ").append(k).append(": ").append(v));
+            }
+        }
+        return sb.toString();
     }
 
     private static String reasonOr(AgentResponse response, String fallback) {

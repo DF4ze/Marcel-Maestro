@@ -18,16 +18,9 @@ import org.springframework.context.annotation.Bean;
  * {@link TelegramHumanInteraction} qui sera découvert par le
  * {@link fr.ses10doigts.mm.starter.hitl.CompositeHumanInteraction} du starter.</p>
  *
- * <p><strong>Pourquoi {@code @AutoConfiguration} et non {@code @Configuration} ?</strong><br>
- * {@link SimpleTelegramSender} est lui-même fourni par l'auto-configuration de
- * {@code telegram-bots-mvc} ({@code TelegramAutoConfiguration}). Une {@code @Configuration}
- * ordinaire est parsée <em>avant</em> toutes les auto-configurations :
- * {@code @ConditionalOnBean(SimpleTelegramSender.class)} évaluerait donc toujours {@code false}.
- * En passant par {@code @AutoConfiguration} avec
- * {@code @AutoConfigureAfter(TelegramAutoConfiguration)} + {@code @AutoConfigureBefore(MmCoreAutoConfiguration)},
- * l'ordre garanti est : telegram-bots-mvc → TelegramMmAutoConfiguration → MmCoreAutoConfiguration.
- * Ce tri explicite est la clé : sans {@code @AutoConfigureAfter}, Spring pouvait traiter
- * {@code TelegramMmAutoConfiguration} avant que {@code SimpleTelegramSender} soit enregistré.</p>
+ * <p>{@link SimpleTelegramSender} est fourni par {@code TelegramAutoConfiguration} comme
+ * {@code @Bean} — c'est la règle pour toute librairie Spring Boot : les beans réutilisables
+ * doivent être déclarés dans l'auto-configuration, pas via {@code @Service} / component-scan.</p>
  */
 @AutoConfiguration
 @AutoConfigureAfter(name = "fr.ses10doigts.telegrambots.configuration.TelegramAutoConfiguration")
@@ -40,16 +33,10 @@ public class TelegramMmAutoConfiguration {
     /**
      * Adaptateur Telegram du port HumanInteraction.
      *
-     * <p>Exécuté après {@code TelegramAutoConfiguration} (via {@code @AutoConfigureAfter})
-     * pour garantir que {@link SimpleTelegramSender} est déjà enregistré dans le contexte
-     * quand {@code @ConditionalOnBean} est évalué. Sans cet ordre explicite, la condition
-     * pouvait être évaluée avant que telegram-bots-mvc ait eu le temps de créer le sender.</p>
+     * <p>Conditionnel sur {@link SimpleTelegramSender} fourni par {@code TelegramAutoConfiguration}.
+     * Si telegram-bots-mvc n'est pas actif, le canal est absent sans bloquer le démarrage.</p>
      *
-     * <p>Conditionnel sur {@link SimpleTelegramSender} : si le module
-     * {@code telegram-bots-mvc} n'est pas actif, le canal est absent sans bloquer
-     * le démarrage.</p>
-     *
-     * @param sender     sender Telegram (fourni par telegram-bots-mvc après ordering garanti)
+     * @param sender     sender Telegram (fourni par TelegramAutoConfiguration)
      * @param properties propriétés {@code mm.telegram.*}
      * @return adaptateur Telegram prêt à l'emploi
      */
@@ -59,10 +46,9 @@ public class TelegramMmAutoConfiguration {
             SimpleTelegramSender sender,
             TelegramMmProperties properties) {
         log.info("TelegramMmAutoConfiguration — création de TelegramHumanInteraction");
-        log.debug("  sender class  : {}", sender.getClass().getName());
-        log.debug("  botId         : {}", properties.getBotId());
-        log.debug("  chatId        : {}", properties.getChatId());
-        log.debug("  askTimeout    : {}s", properties.getAskTimeoutSeconds());
+        log.debug("  botId      : {}", properties.getBotId());
+        log.debug("  chatId     : {}", properties.getChatId());
+        log.debug("  askTimeout : {}s", properties.getAskTimeoutSeconds());
 
         if (properties.getChatId() == null) {
             log.warn("mm.telegram.chat-id absent — canal Telegram HITL désactivé");

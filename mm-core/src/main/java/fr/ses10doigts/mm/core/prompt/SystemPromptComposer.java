@@ -44,7 +44,10 @@ public final class SystemPromptComposer {
             SÉMANTIQUE DES STATUTS (valeurs exactes, sensibles à la casse)
             - "running"  : la tâche progresse, une nouvelle itération est nécessaire.
             - "done"     : la tâche est terminée ; "output" contient le résultat.
-            - "blocked"  : tu attends une validation ou une ressource externe (humain).
+            - "blocked"  : tu attends une validation humaine AVANT d'exécuter un outil risqué.
+                           Remplis OBLIGATOIREMENT "tool_calls" avec l'outil que tu veux exécuter
+                           et "reason" avec ce que tu veux faire et pourquoi. L'humain verra
+                           l'outil ET ses paramètres exacts pour prendre sa décision.
             - "trouble"  : difficulté rencontrée ; tu réessaies une autre approche.
             - "KO"       : échec définitif, la tâche ne peut pas aboutir.
 

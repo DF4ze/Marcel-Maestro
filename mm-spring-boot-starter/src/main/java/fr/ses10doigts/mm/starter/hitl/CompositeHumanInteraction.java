@@ -56,7 +56,7 @@ public class CompositeHumanInteraction implements HumanInteraction {
         log.info("CompositeHumanInteraction initialisé — {} canal/aux, mode ask()={}",
                 this.channels.size(), primaryChannel);
         for (HumanInteraction ch : this.channels) {
-            log.info("  → canal HITL : {}", ch.getClass().getSimpleName());
+            log.debug("  → canal HITL : {}", ch.getClass().getSimpleName());
         }
     }
 
@@ -72,7 +72,7 @@ public class CompositeHumanInteraction implements HumanInteraction {
             try {
                 channel.notify(notification);
             } catch (Exception e) {
-                log.info("Erreur notify() sur {} : {}",
+                log.warn("Erreur notify() sur {} : {}",
                         channel.getClass().getSimpleName(), e.getMessage());
             }
         }
@@ -117,7 +117,7 @@ public class CompositeHumanInteraction implements HumanInteraction {
      * @return décision du canal le plus rapide
      */
     private ConsentDecision raceAsk(HitlRequest request) {
-        log.info("ask() en mode race — {} canaux en compétition", channels.size());
+        log.debug("ask() en mode race — {} canaux en compétition", channels.size());
 
         List<CompletableFuture<ChannelResult>> futures = new ArrayList<>(channels.size());
 
@@ -143,11 +143,11 @@ public class CompositeHumanInteraction implements HumanInteraction {
             return winner.decision();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.info("ask() race interrompue — retour DENY");
+            log.warn("ask() race interrompue — retour DENY");
             cancelAll();
             return ConsentDecision.DENY;
         } catch (ExecutionException e) {
-            log.info("ask() race en erreur — retour DENY : {}", e.getCause().getMessage());
+            log.warn("ask() race en erreur — retour DENY : {}", e.getCause().getMessage());
             cancelAll();
             return ConsentDecision.DENY;
         }

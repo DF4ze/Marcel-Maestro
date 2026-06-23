@@ -40,6 +40,15 @@ spring:
       client:
         enabled: false
 
+logging:
+  file:
+    name: ./logs/console/marcel-maestro.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 7
+      file-name-pattern: ./logs/console/marcel-maestro.%d{yyyy-MM-dd}.%i.log.gz
+
 # ── Marcel Maestro — configuration applicative (préfixe mm.*) ──
 mm:
   # Étape 6 — Outils dev locaux & passerelle VPS

@@ -319,15 +319,17 @@ public class Dispatcher {
             } else {
                 sb.append("Le moteur s'est arrêté sur statut : ").append(outcome.finalStatus().json());
             }
-            sb.append("\n_(").append(outcome.iterations()).append(" itération/s, statut=")
-              .append(outcome.finalStatus().json()).append(")_");
+            sb.append("\n(").append(outcome.iterations()).append(" itération/s, statut=")
+              .append(outcome.finalStatus().json()).append(")");
             output = sb.toString();
             log.warn("Tâche KO — taskId={}, raison='{}', iterations={}",
                     originalTask.taskId(), outcome.terminationReason(), outcome.iterations());
         }
 
+        // Les emojis sont ajoutés par TelegramHumanInteraction.notify() via LEVEL_EMOJI —
+        // ne pas les mettre dans le titre pour éviter le doublon (ex : "❌ ❌ Marcel...").
         AgentNotification notif = new AgentNotification(
-                success ? "✅ Réponse de Marcel" : "❌ Marcel n'a pas pu traiter ta demande",
+                success ? "Réponse de Marcel" : "Marcel n'a pas pu traiter ta demande",
                 output,
                 success ? NotificationLevel.SUCCESS : NotificationLevel.ERROR,
                 originalTask.ctx());

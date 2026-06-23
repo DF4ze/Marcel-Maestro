@@ -84,8 +84,11 @@ public class TelegramHumanInteraction implements CancellableHumanInteraction {
     }
 
     /**
-     * Envoie une notification formatée sur Telegram. Le message inclut le contexte
-     * (agent, tâche) conformément à ADR-016.
+     * Envoie une notification formatée sur Telegram en texte plat.
+     *
+     * <p>Utilise volontairement {@code sendMessage} (pas de Markdown) : le contenu des
+     * notifications peut provenir du LLM et contenir des caractères spéciaux ({@code *},
+     * {@code _}, {@code [}…) qui cassent le parser Telegram Markdown v1.</p>
      *
      * @param notification notification à pousser
      */
@@ -94,28 +97,15 @@ public class TelegramHumanInteraction implements CancellableHumanInteraction {
         String emoji = LEVEL_EMOJI.getOrDefault(notification.level(), "ℹ️");
         String ctx = formatContext(notification);
 
-        String text = String.format("%s *%s*\n%s\n_%s_",
-                emoji,
-                notification.title(),
-                notification.message(),
-                ctx);
+        String text = ctx.isBlank()
+                ? String.format("%s %s\n%s", emoji, notification.title(), notification.message())
+                : String.format("%s %s\n%s\n%s", emoji, notification.title(), notification.message(), ctx);
 
-        log.info("Telegram notify() — tentative envoi botId={}, chatId={}, level={}, title={}",
-                botId, chatId, notification.level(), notification.title());
+        log.debug("Telegram notify() — level={}, title={}", notification.level(), notification.title());
         try {
-            sender.sendMarkdownMessage(botId, chatId, text);
-            log.info("Telegram notify() — envoyé avec succès");
+            sender.sendMessage(botId, chatId, text);
         } catch (Exception e) {
-            log.warn("Telegram notify() — ÉCHEC envoi : {} ({})", e.getMessage(), e.getClass().getSimpleName(), e);
-            // Fallback : tentative en texte brut sans Markdown
-            try {
-                String plainText = String.format("%s %s\n%s",
-                        emoji, notification.title(), notification.message());
-                sender.sendMessage(botId, chatId, plainText);
-                log.info("Telegram notify() — fallback texte brut envoyé");
-            } catch (Exception e2) {
-                log.warn("Telegram notify() — ÉCHEC fallback aussi : {}", e2.getMessage());
-            }
+            log.warn("Telegram notify() — échec envoi : {}", e.getMessage());
         }
     }
 
@@ -194,16 +184,19 @@ public class TelegramHumanInteraction implements CancellableHumanInteraction {
     }
 
     /**
-     * Envoie le message HITL avec les 5 boutons inline.
+     * Envoie le message HITL avec les 5 boutons inline en texte plat.
+     *
+     * <p>Utilise {@link TelegramMessageFormat#PLAIN} pour éviter tout conflit avec
+     * les caractères spéciaux présents dans la question (noms de fichiers, chemins…).</p>
      */
     private void sendAskMessage(HitlRequest request) {
-        String text = String.format("⚠️ *Validation requise* \\[%s\\]\n\n%s",
+        String text = String.format("⚠️ Validation requise [%s]\n\n%s",
                 request.riskLevel(),
                 request.question());
 
         TelegramView view = TelegramView.builder()
                 .text(text)
-                .format(TelegramMessageFormat.MARKDOWN)
+                .format(TelegramMessageFormat.PLAIN)
                 .buttons(List.of(
                         List.of(
                                 new TelegramButtonView("✅ Une fois", CB_ALLOW_ONCE),
@@ -220,18 +213,17 @@ public class TelegramHumanInteraction implements CancellableHumanInteraction {
                 .build();
 
         sender.sendView(botId, chatId, view);
-        log.info("Telegram ask() envoyé — riskLevel={}", request.riskLevel());
+        log.debug("Telegram ask() envoyé — riskLevel={}", request.riskLevel());
     }
 
     /**
-     * Formate le contexte agent/tâche pour l'inclusion dans le message (ADR-016).
+     * Formate le contexte tâche pour l'inclusion dans le message (ADR-016).
+     * Chaque champ sur sa propre ligne pour la lisibilité dans Telegram.
      */
     private static String formatContext(AgentNotification notification) {
         if (notification.ctx() == null) {
             return "";
         }
-        return String.format("agent=%s task=%s",
-                notification.ctx().conversationId(),
-                notification.ctx().taskId());
+        return String.format("tâche: %s", notification.ctx().taskId());
     }
 }

@@ -96,8 +96,8 @@ public class TelegramMmController {
         log.info("Telegram chat — tâche soumise taskId={}, texte='{}'",
                 taskId, truncate(text, 60));
 
-        return String.format("⏳ Message reçu (tâche `%s`). Je traite, tu recevras la réponse dans un instant…",
-                truncate(taskId, 8));
+        return String.format("⏳ Message reçu (tâche %s).\nJe traite, tu recevras la réponse dans un instant…",
+                taskId);
     }
 
     // ── Commandes ────────────────────────────────────────────────────────

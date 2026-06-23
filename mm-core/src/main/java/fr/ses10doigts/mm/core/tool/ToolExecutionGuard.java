@@ -55,13 +55,13 @@ public class ToolExecutionGuard {
 
         // 1. HITL guard
         if (hitlGuard != null) {
-            log.info("Verification HITL pour l'outil '{}' (risque {})", toolName, tool.riskLevel());
-            HitlVerdict verdict = hitlGuard.check(toolName, tool.riskLevel(), ctx);
+            log.debug("Vérification HITL pour l'outil '{}' (risque {})", toolName, tool.riskLevel());
+            HitlVerdict verdict = hitlGuard.check(toolName, tool.riskLevel(), params, ctx);
             if (!verdict.allowed()) {
-                log.info("Outil '{}' refuse par HITL : {}", toolName, verdict.reason());
+                log.info("Outil '{}' refusé par HITL : {}", toolName, verdict.reason());
                 return ToolResult.fail("denied: " + verdict.reason());
             }
-            log.debug("Outil '{}' autorise par HITL : {}", toolName, verdict.reason());
+            log.debug("Outil '{}' autorisé par HITL : {}", toolName, verdict.reason());
         }
 
         // 2. Path validation
@@ -76,7 +76,7 @@ public class ToolExecutionGuard {
 
         // 3. Execution avec timeout
         long timeoutMs = tool.maxExecutionTimeMs();
-        log.info("Execution de l'outil '{}' (timeout {} ms)", toolName, timeoutMs);
+        log.debug("Exécution de l'outil '{}' (timeout {} ms)", toolName, timeoutMs);
 
         try {
             ToolResult result = CompletableFuture

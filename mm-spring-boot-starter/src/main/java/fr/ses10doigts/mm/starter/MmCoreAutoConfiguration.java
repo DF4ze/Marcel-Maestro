@@ -25,6 +25,7 @@ import fr.ses10doigts.mm.starter.journal.FileJournal;
 import fr.ses10doigts.mm.starter.journal.JournalProperties;
 import fr.ses10doigts.mm.starter.memory.JpaMemoryStore;
 import fr.ses10doigts.mm.starter.memory.MemoryEntryRepository;
+import fr.ses10doigts.mm.starter.prompt.ToolsSystemPromptExtension;
 import fr.ses10doigts.mm.starter.tool.RememberFactTool;
 import java.nio.file.Path;
 import java.util.List;
@@ -148,11 +149,11 @@ public class MmCoreAutoConfiguration {
         log.info("MmCoreAutoConfiguration — assemblage CompositeHumanInteraction, {} bean(s) HumanInteraction détecté(s)",
                 allChannels.size());
         allChannels.forEach(ch ->
-                log.info("  HumanInteraction candidat : {}", ch.getClass().getSimpleName()));
+                log.debug("  HumanInteraction candidat : {}", ch.getClass().getSimpleName()));
         List<HumanInteraction> channels = allChannels.stream()
                 .filter(ch -> !(ch instanceof CompositeHumanInteraction))
                 .toList();
-        log.info("  → {} canal/aux retenu(s) après filtrage du Composite lui-même", channels.size());
+        log.debug("  → {} canal/aux retenu(s) après filtrage du Composite lui-même", channels.size());
         return new CompositeHumanInteraction(channels, channelProperties.getPrimaryChannel());
     }
 
@@ -251,6 +252,25 @@ public class MmCoreAutoConfiguration {
     @ConditionalOnMissingBean
     public ToolRegistry toolRegistry(ObjectProvider<AgentTool> tools) {
         return new ToolRegistry(tools.orderedStream().toList());
+    }
+
+    /**
+     * Extension du system prompt listant les outils disponibles avec leurs noms exacts.
+     *
+     * <p>Indispensable : le LLM produit des {@code tool_calls} en JSON pur (pas de function
+     * calling natif). Sans ce catalogue, il invente des noms ({@code create_file},
+     * {@code file_creation}…) qui échouent avec "outil inconnu" dans le registre.</p>
+     *
+     * @param tools tous les AgentTool beans du contexte
+     * @return extension injectée dans SystemPromptComposer
+     */
+    @Bean
+    @ConditionalOnMissingBean(ToolsSystemPromptExtension.class)
+    public ToolsSystemPromptExtension toolsSystemPromptExtension(ObjectProvider<AgentTool> tools) {
+        List<AgentTool> toolList = tools.orderedStream().toList();
+        log.info("ToolsSystemPromptExtension — {} outil(s) exposé(s) au LLM", toolList.size());
+        toolList.forEach(t -> log.info("  → outil LLM : {} [{}]", t.name(), t.riskLevel()));
+        return new ToolsSystemPromptExtension(toolList);
     }
 
     // AgentLoop
