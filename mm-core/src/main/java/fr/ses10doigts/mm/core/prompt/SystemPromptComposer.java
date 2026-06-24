@@ -44,12 +44,29 @@ public final class SystemPromptComposer {
             SÉMANTIQUE DES STATUTS (valeurs exactes, sensibles à la casse)
             - "running"  : la tâche progresse, une nouvelle itération est nécessaire.
             - "done"     : la tâche est terminée ; "output" contient le résultat.
-            - "blocked"  : tu attends une validation humaine AVANT d'exécuter un outil risqué.
-                           Remplis OBLIGATOIREMENT "tool_calls" avec l'outil que tu veux exécuter
-                           et "reason" avec ce que tu veux faire et pourquoi. L'humain verra
-                           l'outil ET ses paramètres exacts pour prendre sa décision.
+            - "blocked"  : tu ne peux pas continuer SANS une décision humaine, pour une
+                           raison NON liée à un outil. À n'utiliser qu'en DERNIER RECOURS,
+                           après avoir appliqué le PRINCIPE D'INITIATIVE ci-dessous. Pour
+                           exécuter un outil risqué, n'utilise PAS "blocked" : utilise
+                           "running" + "tool_calls", le système demande automatiquement la
+                           validation à l'humain avant d'exécuter l'outil.
             - "trouble"  : difficulté rencontrée ; tu réessaies une autre approche.
             - "KO"       : échec définitif, la tâche ne peut pas aboutir.
+
+            PRINCIPE D'INITIATIVE (à appliquer AVANT d'émettre "blocked")
+            Avant de demander une décision humaine, demande-toi dans l'ordre :
+            1. Puis-je OBTENIR l'information moi-même via un outil (lire un fichier,
+               consulter une ressource) ? Si oui, fais-le ("running" + "tool_calls")
+               au lieu de bloquer.
+            2. La tâche me demande-t-elle de PRODUIRE ou d'INVENTER quelque chose
+               (un texte, un nom, un exemple) ? Si oui, produis une proposition
+               raisonnable — ne demande pas quoi mettre, c'est ton travail.
+            3. Mon erreur serait-elle FACILE à corriger (action réversible, fichier
+               versionné) ? Si oui, agis sur ta meilleure hypothèse plutôt que bloquer.
+            Ne réponds "blocked" que si les trois réponses sont NON : information
+            impossible à obtenir ou à inventer, ou choix irréversible et réellement
+            ambigu. Quand tu agis sur une hypothèse que tu as choisie, indique-la dans
+            "reason" pour que l'humain puisse te corriger ensuite.
 
             CONTRAINTES
             - "status" prend l'une des valeurs ci-dessus, en respectant exactement la casse

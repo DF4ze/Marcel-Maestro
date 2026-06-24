@@ -25,6 +25,7 @@ import fr.ses10doigts.mm.starter.journal.FileJournal;
 import fr.ses10doigts.mm.starter.journal.JournalProperties;
 import fr.ses10doigts.mm.starter.memory.JpaMemoryStore;
 import fr.ses10doigts.mm.starter.memory.MemoryEntryRepository;
+import fr.ses10doigts.mm.starter.prompt.AutonomySystemPromptExtension;
 import fr.ses10doigts.mm.starter.prompt.ToolsSystemPromptExtension;
 import fr.ses10doigts.mm.starter.tool.RememberFactTool;
 import java.nio.file.Path;
@@ -271,6 +272,25 @@ public class MmCoreAutoConfiguration {
         log.info("ToolsSystemPromptExtension — {} outil(s) exposé(s) au LLM", toolList.size());
         toolList.forEach(t -> log.info("  → outil LLM : {} [{}]", t.name(), t.riskLevel()));
         return new ToolsSystemPromptExtension(toolList);
+    }
+
+    /**
+     * Extension de prompt réglant l'autonomie de Cortex face au statut {@code "blocked"}
+     * (HITL de clarification). Pilotée par {@code mm.autonomy.level} (0..10, défaut 5).
+     *
+     * <p>N'affecte pas le consentement des outils risqués, géré séparément par
+     * {@code ToolExecutionGuard}.</p>
+     *
+     * @param level niveau d'autonomie configuré (défaut 5 = équilibré)
+     * @return extension injectée dans SystemPromptComposer
+     */
+    @Bean
+    @ConditionalOnMissingBean(AutonomySystemPromptExtension.class)
+    public AutonomySystemPromptExtension autonomySystemPromptExtension(
+            @Value("${mm.autonomy.level:5}") int level) {
+        AutonomySystemPromptExtension ext = new AutonomySystemPromptExtension(level);
+        log.info("AutonomySystemPromptExtension — niveau d'autonomie {}/10", ext.level());
+        return ext;
     }
 
     // AgentLoop

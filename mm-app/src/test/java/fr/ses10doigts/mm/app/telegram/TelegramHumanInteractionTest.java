@@ -44,13 +44,16 @@ class TelegramHumanInteractionTest {
     }
 
     @Test
-    void notifySendsMarkdownMessage() {
+    void notifySendsPlainMessage() {
+        // notify() utilise volontairement sendMessage (texte brut) et NON sendMarkdownMessage :
+        // le contenu peut venir du LLM et contenir des caractères spéciaux (*, _, […) qui
+        // casseraient le parser Markdown v1 de Telegram. Voir TelegramHumanInteraction#notify.
         AgentNotification notification = new AgentNotification(
                 "Build terminé", "Succès en 42s", NotificationLevel.SUCCESS, CTX);
 
         telegram.notify(notification);
 
-        verify(sender).sendMarkdownMessage(anyString(), anyLong(), anyString());
+        verify(sender).sendMessage(anyString(), anyLong(), anyString());
     }
 
     @Test

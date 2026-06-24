@@ -9,9 +9,9 @@ import fr.ses10doigts.mm.core.agent.AgentStatus;
 import fr.ses10doigts.mm.core.agent.TaskMessage;
 import fr.ses10doigts.mm.core.agent.TaskType;
 import fr.ses10doigts.mm.core.engine.parse.AgentResponseParser;
+import fr.ses10doigts.mm.core.hitl.ConsentDecision;
 import fr.ses10doigts.mm.core.engine.support.ScriptedChatModel;
 import fr.ses10doigts.mm.core.engine.support.ScriptedHumanInteraction;
-import fr.ses10doigts.mm.core.hitl.ConsentDecision;
 import fr.ses10doigts.mm.core.prompt.SystemPromptComposer;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -106,61 +106,47 @@ class AgentLoopTest {
     }
 
     @Test
-    void blocked_sansHitl_termineBlocked() {
-        ScriptedChatModel model = new ScriptedChatModel().reply(BLOCKED);
+    void blocked_sansCanalHITL_termineEnBlocked() {
+        // Rebranchement (ADR-006 rev.) : blocked → AWAIT_HUMAN (HITL de clarification).
+        // Sans canal HITL câblé, la boucle ne peut pas demander : elle s'arrête proprement
+        // en BLOCKED au lieu de boucler jusqu'au KO (ancien comportement blocked → CONTINUE).
+        ScriptedChatModel model = new ScriptedChatModel()
+                .reply(BLOCKED);
 
         AgentOutcome outcome = newLoop(LoopConfig.defaults(), model).run(task(), StopSignal.never());
 
         assertEquals(AgentStatus.BLOCKED, outcome.finalStatus());
-        assertTrue(outcome.terminationReason().contains("pas de canal HITL"),
-                outcome.terminationReason());
+        assertEquals(1, outcome.iterations());
     }
 
     @Test
-    void blocked_hitlAllow_reprendEtTermineDone() {
+    void blocked_sansTool_declenche_leHITL_deClarification() {
+        // blocked sans tool_calls → AWAIT_HUMAN : la boucle interroge l'humain.
+        // Sur une réponse ALLOW, elle reprend et termine. (Le HITL de consentement
+        // d'outil reste, lui, géré séparément par ToolExecutionGuard.)
         ScriptedChatModel model = new ScriptedChatModel()
-                .reply(BLOCKED) // 1re itération → BLOCKED → ask() → ALLOW
-                .reply(DONE);   // 2e itération → DONE
+                .reply(BLOCKED)
+                .reply(DONE);
         var hitl = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_ONCE);
 
         AgentOutcome outcome = newLoop(LoopConfig.defaults(), model, hitl).run(task(), StopSignal.never());
 
         assertEquals(AgentStatus.DONE, outcome.finalStatus());
-        assertEquals(2, outcome.iterations());
-        assertEquals(1, hitl.askCount(), "ask() appelé une fois");
+        assertEquals(1, hitl.askCount(), "blocked sans tool_calls déclenche le HITL de clarification");
     }
 
     @Test
-    void blocked_hitlDeny_termineKO() {
-        ScriptedChatModel model = new ScriptedChatModel().reply(BLOCKED);
+    void blocked_refusParHumain_termineEnKO() {
+        // Sur un refus (DENY), la tâche s'arrête en KO.
+        ScriptedChatModel model = new ScriptedChatModel()
+                .reply(BLOCKED)
+                .reply(DONE); // ne sera jamais atteint
         var hitl = new ScriptedHumanInteraction().respond(ConsentDecision.DENY);
 
         AgentOutcome outcome = newLoop(LoopConfig.defaults(), model, hitl).run(task(), StopSignal.never());
 
         assertEquals(AgentStatus.KO, outcome.finalStatus());
-        assertTrue(outcome.terminationReason().contains("refusé"), outcome.terminationReason());
         assertEquals(1, hitl.askCount());
-        assertEquals(1, hitl.notifyCount(), "notify(WARNING) envoyé sur refus");
-    }
-
-    @Test
-    void blocked_hitlAllowSession_reprisePuisBlockedDeNouveau_pasDeDeuximeDemande() {
-        // BLOCKED → ALLOW_SESSION → reprend → de nouveau BLOCKED → cache (pas de re-demande) → reprend → DONE
-        // Note : le cache de la boucle actuelle ne s'applique pas ici (c'est le HitlGuard qui cache).
-        // Sur BLOCKED, on appelle directement HumanInteraction.ask(), donc pas de cache dans la boucle.
-        // Ce test vérifie le scénario de multiple BLOCKED → chaque fois ask() est appelé.
-        ScriptedChatModel model = new ScriptedChatModel()
-                .reply(BLOCKED)
-                .reply(BLOCKED)
-                .reply(DONE);
-        var hitl = new ScriptedHumanInteraction()
-                .respond(ConsentDecision.ALLOW_SESSION, ConsentDecision.ALLOW_ONCE);
-
-        AgentOutcome outcome = newLoop(LoopConfig.defaults(), model, hitl).run(task(), StopSignal.never());
-
-        assertEquals(AgentStatus.DONE, outcome.finalStatus());
-        assertEquals(3, outcome.iterations());
-        assertEquals(2, hitl.askCount(), "BLOCKED dans la boucle = ask() à chaque fois");
     }
 
     @Test

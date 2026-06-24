@@ -55,13 +55,14 @@ public final class HitlGuard {
     /**
      * Évalue si l'exécution d'un outil nécessite un consentement, et le demande si besoin.
      *
-     * @param toolName  nom de l'outil à exécuter
-     * @param riskLevel niveau de risque déclaré par l'outil
-     * @param params    paramètres d'exécution (affichés à l'utilisateur pour contexte)
-     * @param ctx       contexte d'exécution courant
+     * @param toolName        nom de l'outil à exécuter
+     * @param toolDescription description lisible de l'outil (affichée à l'utilisateur)
+     * @param riskLevel       niveau de risque déclaré par l'outil
+     * @param params          paramètres d'exécution (affichés à l'utilisateur pour contexte)
+     * @param ctx             contexte d'exécution courant
      * @return le verdict (autorisé ou refusé)
      */
-    public HitlVerdict check(String toolName, RiskLevel riskLevel,
+    public HitlVerdict check(String toolName, String toolDescription, RiskLevel riskLevel,
                              Map<String, Object> params, AgentContext ctx) {
         // 1. La politique dit-elle que le consentement est requis ?
         if (!policy.requiresConsent(riskLevel)) {
@@ -76,7 +77,7 @@ public final class HitlGuard {
 
         // 3. Demander à l'humain
         HitlRequest request = new HitlRequest(
-                buildQuestion(toolName, riskLevel, params),
+                buildQuestion(toolName, toolDescription, riskLevel, params),
                 riskLevel,
                 ctx);
 
@@ -94,23 +95,30 @@ public final class HitlGuard {
     /**
      * Construit la question affichée à l'utilisateur lors d'une demande HITL.
      *
-     * <p>Inclut le nom de l'outil, son niveau de risque et ses paramètres pour que
-     * l'utilisateur puisse prendre une décision éclairée (ex : chemin du fichier à écrire).</p>
+     * <p>Affiche : nom de l'outil, sa description fonctionnelle (ce qu'il fait concrètement),
+     * son niveau de risque, et ses paramètres d'exécution — pour que l'utilisateur puisse
+     * prendre une décision éclairée sans avoir à deviner ce que fait l'outil.</p>
      *
-     * @param toolName  nom de l'outil
-     * @param riskLevel niveau de risque
-     * @param params    paramètres d'exécution
-     * @return question lisible
+     * @param toolName        nom technique de l'outil
+     * @param toolDescription description lisible de l'outil
+     * @param riskLevel       niveau de risque
+     * @param params          paramètres d'exécution
+     * @return question lisible pour l'humain
      */
-    private static String buildQuestion(String toolName, RiskLevel riskLevel,
-                                        Map<String, Object> params) {
+    private static String buildQuestion(String toolName, String toolDescription,
+                                        RiskLevel riskLevel, Map<String, Object> params) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Autoriser l'exécution de '").append(toolName)
-          .append("' (risque ").append(riskLevel).append(") ?");
+        sb.append("Outil : ").append(toolName);
+
+        if (toolDescription != null && !toolDescription.isBlank()) {
+            sb.append("\n").append(toolDescription);
+        }
+
+        sb.append("\nRisque : ").append(riskLevel);
 
         if (params != null && !params.isEmpty()) {
             sb.append("\n\nParamètres :");
-            params.forEach((k, v) -> sb.append("\n  ").append(k).append(" = ").append(v));
+            params.forEach((k, v) -> sb.append("\n  • ").append(k).append(" = ").append(v));
         }
 
         return sb.toString();

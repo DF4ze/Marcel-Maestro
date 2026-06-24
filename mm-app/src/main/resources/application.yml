@@ -67,6 +67,14 @@ mm:
   journal:
     base-path: ./logs/journal
 
+  # Autonomie de Cortex face au statut "blocked" (HITL de clarification) :
+  #   0  = demande très souvent (prudent)
+  #   5  = équilibré (agit sur le réversible, demande sur l'important)
+  #   10 = quasi autonome (ne bloque qu'en cas d'impossibilité stricte)
+  # N'affecte PAS le consentement des outils risqués, toujours demandé.
+  autonomy:
+    level: 5
+
   # HITL multi-canal : "race" (Console + Telegram en parallèle) | "console" | "telegram"
   # En service sans terminal (stdin indisponible), préférer "telegram".
   hitl:

@@ -56,7 +56,7 @@ public class ToolExecutionGuard {
         // 1. HITL guard
         if (hitlGuard != null) {
             log.debug("Vérification HITL pour l'outil '{}' (risque {})", toolName, tool.riskLevel());
-            HitlVerdict verdict = hitlGuard.check(toolName, tool.riskLevel(), params, ctx);
+            HitlVerdict verdict = hitlGuard.check(toolName, tool.description(), tool.riskLevel(), params, ctx);
             if (!verdict.allowed()) {
                 log.info("Outil '{}' refusé par HITL : {}", toolName, verdict.reason());
                 return ToolResult.fail("denied: " + verdict.reason());

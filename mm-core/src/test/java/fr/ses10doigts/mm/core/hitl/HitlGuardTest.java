@@ -57,7 +57,7 @@ class HitlGuardTest {
         var mock = new ScriptedHumanInteraction();
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), new ConsentCache(), mock);
 
-        HitlVerdict verdict = guard.check("read_file", RiskLevel.LOW, CTX);
+        HitlVerdict verdict = guard.check("read_file", null, RiskLevel.LOW, null, CTX);
 
         assertTrue(verdict.allowed());
         assertNull(verdict.decision());
@@ -69,7 +69,7 @@ class HitlGuardTest {
         var mock = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_ONCE);
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), new ConsentCache(), mock);
 
-        HitlVerdict verdict = guard.check("deploy", RiskLevel.MEDIUM, CTX);
+        HitlVerdict verdict = guard.check("deploy", null, RiskLevel.MEDIUM, null, CTX);
 
         assertTrue(verdict.allowed());
         assertEquals(ConsentDecision.ALLOW_ONCE, verdict.decision());
@@ -81,7 +81,7 @@ class HitlGuardTest {
         var mock = new ScriptedHumanInteraction().respond(ConsentDecision.DENY);
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), new ConsentCache(), mock);
 
-        HitlVerdict verdict = guard.check("deploy", RiskLevel.HIGH, CTX);
+        HitlVerdict verdict = guard.check("deploy", null, RiskLevel.HIGH, null, CTX);
 
         assertFalse(verdict.allowed());
         assertEquals(ConsentDecision.DENY, verdict.decision());
@@ -94,12 +94,12 @@ class HitlGuardTest {
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), cache, mock);
 
         // Premier appel → demande
-        HitlVerdict v1 = guard.check("deploy", RiskLevel.HIGH, CTX);
+        HitlVerdict v1 = guard.check("deploy", null, RiskLevel.HIGH, null, CTX);
         assertTrue(v1.allowed());
         assertEquals(1, mock.requests().size());
 
         // Deuxième appel → cache, pas de demande
-        HitlVerdict v2 = guard.check("deploy", RiskLevel.HIGH, CTX);
+        HitlVerdict v2 = guard.check("deploy", null, RiskLevel.HIGH, null, CTX);
         assertTrue(v2.allowed());
         assertEquals(ConsentDecision.ALLOW_SESSION, v2.decision());
         assertEquals(1, mock.requests().size(), "pas de deuxième appel à ask()");
@@ -111,8 +111,8 @@ class HitlGuardTest {
                 .respond(ConsentDecision.ALLOW_ONCE, ConsentDecision.ALLOW_ONCE);
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), new ConsentCache(), mock);
 
-        guard.check("deploy", RiskLevel.HIGH, CTX);
-        guard.check("deploy", RiskLevel.HIGH, CTX);
+        guard.check("deploy", null, RiskLevel.HIGH, null, CTX);
+        guard.check("deploy", null, RiskLevel.HIGH, null, CTX);
 
         assertEquals(2, mock.requests().size(), "ALLOW_ONCE ne cache pas");
     }
@@ -123,8 +123,8 @@ class HitlGuardTest {
         ConsentCache cache = new ConsentCache();
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), cache, mock);
 
-        guard.check("deploy", RiskLevel.CRITICAL, CTX);
-        guard.check("deploy", RiskLevel.CRITICAL, CTX);
+        guard.check("deploy", null, RiskLevel.CRITICAL, null, CTX);
+        guard.check("deploy", null, RiskLevel.CRITICAL, null, CTX);
 
         assertEquals(1, mock.requests().size(), "ALLOW_PROJECT caché comme session");
         assertEquals(ConsentDecision.ALLOW_PROJECT, cache.lookup("deploy").orElse(null));
@@ -136,8 +136,8 @@ class HitlGuardTest {
         ConsentCache cache = new ConsentCache();
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), cache, mock);
 
-        guard.check("deploy", RiskLevel.CRITICAL, CTX);
-        guard.check("deploy", RiskLevel.CRITICAL, CTX);
+        guard.check("deploy", null, RiskLevel.CRITICAL, null, CTX);
+        guard.check("deploy", null, RiskLevel.CRITICAL, null, CTX);
 
         assertEquals(1, mock.requests().size(), "ALLOW_ALWAYS caché comme session");
     }
@@ -148,8 +148,8 @@ class HitlGuardTest {
                 .respond(ConsentDecision.ALLOW_SESSION, ConsentDecision.ALLOW_SESSION);
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), new ConsentCache(), mock);
 
-        guard.check("deploy", RiskLevel.HIGH, CTX);
-        guard.check("restart", RiskLevel.HIGH, CTX);
+        guard.check("deploy", null, RiskLevel.HIGH, null, CTX);
+        guard.check("restart", null, RiskLevel.HIGH, null, CTX);
 
         assertEquals(2, mock.requests().size(), "outils différents = demandes séparées");
     }
@@ -159,7 +159,7 @@ class HitlGuardTest {
         var mock = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_ONCE);
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), new ConsentCache(), mock);
 
-        guard.check("service_management", RiskLevel.CRITICAL, CTX);
+        guard.check("service_management", "Gère les services système", RiskLevel.CRITICAL, null, CTX);
 
         HitlRequest req = mock.requests().getFirst();
         assertTrue(req.question().contains("service_management"));
