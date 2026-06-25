@@ -1,11 +1,13 @@
 package fr.ses10doigts.mm.app.telegram;
 
+import fr.ses10doigts.mm.app.conversation.ConversationService;
 import fr.ses10doigts.mm.core.agent.AgentContext;
 import fr.ses10doigts.mm.core.agent.TaskMessage;
 import fr.ses10doigts.mm.core.agent.TaskType;
 import fr.ses10doigts.mm.core.hitl.ConsentDecision;
 import fr.ses10doigts.mm.core.orchestration.Dispatcher;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
+import fr.ses10doigts.mm.starter.conversation.ConversationEntity;
 import fr.ses10doigts.telegrambots.model.TelegramUpdateContext;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.CallbackQuery;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.Chat;
@@ -15,15 +17,23 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 /**
- * Contrôleur Telegram pour le pilotage de Marcel Maestro (étape 8, livrable 5).
+ * Contrôleur Telegram pour le pilotage de Marcel Maestro (étape 8, livrable 5 / E2-M2).
  *
  * <p>Gère les commandes {@code /stop} et {@code /status}, ainsi que les callbacks
  * des boutons inline HITL (5 handlers à valeur fixe, un par {@link ConsentDecision}).
  * Le {@link Dispatcher} est injecté via {@link ObjectProvider} car il peut être absent
  * si aucune {@link fr.ses10doigts.mm.core.orchestration.AgentFactory} n'est déclarée.</p>
+ *
+ * <p><strong>E2-M2 — Intégration ConversationService :</strong><br>
+ * Si {@code mm.telegram.default-project-id} est configuré, chaque message Telegram
+ * démarre une conversation via {@link ConversationService#startConversation(String)},
+ * ce qui garantit un {@code conversationId} (UUID) non-null dans l'{@link AgentContext}.
+ * Sans cette propriété, le chatId Telegram est utilisé comme fallback (avec un
+ * {@code log.warn}). {@code projectId} vaut alors {@code "default"}.</p>
  *
  * <p>Le handler {@link #chat(TelegramUpdateContext)} soumet le message de l'utilisateur
  * dans la {@link TaskQueue} comme un {@code USER_REQUEST} destiné au cortex. La réponse
@@ -37,21 +47,36 @@ public class TelegramMmController {
 
     private final ObjectProvider<Dispatcher> dispatcherProvider;
     private final ObjectProvider<TelegramHumanInteraction> telegramProvider;
+    private final ObjectProvider<ConversationService> conversationServiceProvider;
     private final TaskQueue taskQueue;
+
+    /**
+     * ID du projet par défaut pour les messages Telegram (E2-M2).
+     * Si absent ({@code null}), le chatId Telegram est utilisé comme conversationId fallback.
+     */
+    private final String defaultProjectId;
 
     /**
      * Construit le contrôleur Telegram MM.
      *
-     * @param dispatcherProvider provider du Dispatcher (optionnel)
-     * @param telegramProvider   provider du TelegramHumanInteraction (optionnel)
-     * @param taskQueue          file de tâches (toujours présente si le starter est chargé)
+     * @param dispatcherProvider          provider du Dispatcher (optionnel)
+     * @param telegramProvider            provider du TelegramHumanInteraction (optionnel)
+     * @param conversationServiceProvider provider du ConversationService (optionnel — E2-M2)
+     * @param taskQueue                   file de tâches (toujours présente si le starter est chargé)
+     * @param defaultProjectId            ID du projet par défaut pour les messages Telegram
+     *                                    ({@code mm.telegram.default-project-id}, nullable)
      */
-    public TelegramMmController(ObjectProvider<Dispatcher> dispatcherProvider,
-                                 ObjectProvider<TelegramHumanInteraction> telegramProvider,
-                                 TaskQueue taskQueue) {
+    public TelegramMmController(
+            ObjectProvider<Dispatcher> dispatcherProvider,
+            ObjectProvider<TelegramHumanInteraction> telegramProvider,
+            ObjectProvider<ConversationService> conversationServiceProvider,
+            TaskQueue taskQueue,
+            @Value("${mm.telegram.default-project-id:#{null}}") String defaultProjectId) {
         this.dispatcherProvider = dispatcherProvider;
         this.telegramProvider = telegramProvider;
+        this.conversationServiceProvider = conversationServiceProvider;
         this.taskQueue = taskQueue;
+        this.defaultProjectId = defaultProjectId;
     }
 
     // ── Chat ────────────────────────────────────────────────────────
@@ -59,6 +84,11 @@ public class TelegramMmController {
     /**
      * Reçoit un message libre de l'utilisateur, le soumet au cortex via la
      * {@link TaskQueue} et retourne un accusé de réception immédiat.
+     *
+     * <p>E2-M2 : si {@code mm.telegram.default-project-id} est configuré et que
+     * {@link ConversationService} est disponible, une {@link ConversationEntity} est
+     * créée en DB — son UUID devient le {@code conversationId} de l'{@link AgentContext}.
+     * Sinon fallback sur le chatId Telegram (log.warn).</p>
      *
      * <p>La réponse effective sera poussée de manière asynchrone par
      * {@link TelegramHumanInteraction#notify} quand le Dispatcher clôture la tâche.</p>
@@ -80,21 +110,43 @@ public class TelegramMmController {
             return "⚠️ Le moteur agent n'est pas démarré (aucune AgentFactory configurée).";
         }
 
-        String taskId = UUID.randomUUID().toString();
-        String conversationId = ctx.getChatId() != null
-                ? String.valueOf(ctx.getChatId())
-                : "telegram";
+        // ── Résolution projectId + conversationId (E2-M2) ──────────────────
+        String projectId;
+        String conversationId;
 
+        ConversationService conversationService = conversationServiceProvider.getIfAvailable();
+        if (defaultProjectId != null && conversationService != null) {
+            try {
+                ConversationEntity conv = conversationService.startConversation(defaultProjectId);
+                projectId = defaultProjectId;
+                conversationId = conv.getId();
+                log.debug("Telegram chat — conversationId injecté={}, projectId={}", conversationId, projectId);
+            } catch (Exception e) {
+                log.warn("Telegram chat — impossible de créer la conversation pour projectId={} : {}. Fallback sur chatId.",
+                        defaultProjectId, e.getMessage());
+                projectId = defaultProjectId;
+                conversationId = ctx.getChatId() != null ? String.valueOf(ctx.getChatId()) : "telegram";
+            }
+        } else {
+            if (defaultProjectId == null) {
+                log.warn("Telegram chat — mm.telegram.default-project-id non configuré. Fallback sur chatId comme conversationId.");
+            }
+            projectId = "default";
+            conversationId = ctx.getChatId() != null ? String.valueOf(ctx.getChatId()) : "telegram";
+        }
+
+        // ── Soumission TaskMessage ──────────────────────────────────────────
+        String taskId = UUID.randomUUID().toString();
         TaskMessage message = new TaskMessage(
                 taskId,
                 TaskType.USER_REQUEST,
                 "cortex",
                 text,
-                AgentContext.of("default", "none", conversationId, taskId));
+                AgentContext.of("default", projectId, conversationId, taskId));
 
         taskQueue.submit(message);
-        log.info("Telegram chat — tâche soumise taskId={}, texte='{}'",
-                taskId, truncate(text, 60));
+        log.info("Telegram chat — tâche soumise taskId={}, projectId={}, conversationId={}, texte='{}'",
+                taskId, projectId, conversationId, truncate(text, 60));
 
         return String.format("⏳ Message reçu (tâche %s).\nJe traite, tu recevras la réponse dans un instant…",
                 taskId);
@@ -234,6 +286,10 @@ public class TelegramMmController {
 
     /**
      * Tronque un texte pour l'affichage.
+     *
+     * @param text   texte à tronquer
+     * @param maxLen longueur maximale
+     * @return texte tronqué avec "…" si nécessaire
      */
     private static String truncate(String text, int maxLen) {
         if (text == null) return "?";

@@ -39,8 +39,16 @@ public class TaskController {
 
     // ── DTOs (inner records) ─────────────────────────────────────────────
 
-    /** Corps de la requête de soumission d'une tâche. */
-    public record TaskSubmitRequest(String content) {}
+    /**
+     * Corps de la requête de soumission d'une tâche.
+     *
+     * <p>{@code projectId} et {@code conversationId} sont optionnels pour compatibilité
+     * ascendante : s'ils sont absents du JSON, ils valent {@code null} et le moteur
+     * utilise le contexte par défaut {@code "none"}. Pour que le bypass HITL write
+     * (ADR-023, E2-M3) se déclenche, {@code projectId} doit correspondre à un projet
+     * ayant au moins un workspace externe déclaré.</p>
+     */
+    public record TaskSubmitRequest(String content, String projectId, String conversationId) {}
 
     /** Réponse à une soumission de tâche. */
     public record TaskSubmitResponse(String taskId) {}
@@ -59,7 +67,12 @@ public class TaskController {
     /**
      * Soumet une nouvelle tâche utilisateur dans la file.
      *
-     * @param request contenu de la tâche
+     * <p>Si {@code projectId} est fourni, il est propagé dans l'{@link AgentContext} :
+     * le {@link fr.ses10doigts.mm.core.tool.ToolExecutionGuard} pourra alors bypasser
+     * le HITL write pour les chemins dans un workspace externe déclaré (ADR-023, E2-M3).
+     * Sans {@code projectId}, le comportement HITL est inchangé.</p>
+     *
+     * @param request contenu de la tâche, avec {@code projectId} et {@code conversationId} optionnels
      * @return identifiant de la tâche créée (HTTP 202)
      */
     @PostMapping
@@ -76,7 +89,12 @@ public class TaskController {
                 TaskType.USER_REQUEST,
                 "cortex",
                 request.content(),
-                AgentContext.of("default", "none", "none", taskId));
+                AgentContext.of(
+                        "default",
+                        request.projectId() != null ? request.projectId() : "none",
+                        request.conversationId() != null ? request.conversationId() : "none",
+                        taskId)
+        );
 
         taskQueue.submit(message);
         log.info("POST /api/tasks — tâche soumise, taskId={}", taskId);

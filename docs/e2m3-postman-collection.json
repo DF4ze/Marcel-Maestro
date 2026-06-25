@@ -1,0 +1,463 @@
+{
+  "info": {
+    "name": "Marcel Maestro — E2-M3 Dossiers Externes",
+    "description": "Plan de test E2-M3 : déclaration de workspaces externes, bypass HITL write, sécurité path-traversal.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "projectId", "value": "", "type": "string" },
+    { "key": "workspaceId", "value": "", "type": "string" },
+    { "key": "workspaceId2", "value": "", "type": "string" },
+    { "key": "conversationId", "value": "", "type": "string" },
+    { "key": "externalWorkspacePath", "value": "C:\\Users\\Clem\\Documents\\Marcel-Test-Workspace", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1 — Setup",
+      "item": [
+        {
+          "name": "1.1 Créer projet Test E2M3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('id présent', () => pm.expect(body.id).to.be.a('string'));",
+                  "pm.collectionVariables.set('projectId', body.id);",
+                  "console.log('projectId =', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/projects",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test E2M3\"\n}"
+            }
+          }
+        },
+        {
+          "name": "1.2 Déclarer workspace externe",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('id présent', () => pm.expect(body.id).to.be.a('string'));",
+                  "pm.test('path correspond', () => pm.expect(body.path).to.equal(pm.collectionVariables.get('externalWorkspacePath')));",
+                  "pm.collectionVariables.set('workspaceId', body.id);",
+                  "console.log('workspaceId =', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/projects/{{projectId}}/workspaces",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": \"{{externalWorkspacePath}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "1.3 Vérifier projet avec workspace déclaré",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('workspaces non vide', () => pm.expect(body.workspaces).to.be.an('array').with.lengthOf(1));",
+                  "pm.test('path correct', () => pm.expect(body.workspaces[0].path).to.equal(pm.collectionVariables.get('externalWorkspacePath')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/projects/{{projectId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 — Gestion des workspaces",
+      "item": [
+        {
+          "name": "2.1 Ajouter un second workspace",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('workspaceId2', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/projects/{{projectId}}/workspaces",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": \"C:\\\\Users\\\\Clem\\\\Documents\\\\Marcel-Second-Workspace\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2.2 Lister — 2 workspaces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('2 workspaces', () => pm.expect(body.workspaces).to.have.lengthOf(2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/projects/{{projectId}}"
+          }
+        },
+        {
+          "name": "2.3 Retirer le second workspace",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/projects/{{projectId}}/workspaces/{{workspaceId2}}"
+          }
+        },
+        {
+          "name": "2.4 Vérifier — 1 workspace restant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('1 workspace restant', () => pm.expect(pm.response.json().workspaces).to.have.lengthOf(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/projects/{{projectId}}"
+          }
+        },
+        {
+          "name": "2.5 Projet inexistant → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('message erreur', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/projects/projet-qui-nexiste-pas/workspaces",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": \"C:\\\\tmp\\\\quelconque\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2.6 Path vide → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('message erreur', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/projects/{{projectId}}/workspaces",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": \"\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 — Bypass HITL E2E",
+      "description": "TaskController.submit() accepte projectId et conversationId (corrigé). Vérifier les logs après chaque soumission de tâche.",
+      "item": [
+        {
+          "name": "3.1 Créer une conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('conversationId', body.id);",
+                  "console.log('conversationId =', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/projects/{{projectId}}/conversations"
+          }
+        },
+        {
+          "name": "3.2 Tâche — écriture dans workspace externe déclaré (bypass attendu)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('taskId présent', () => pm.expect(pm.response.json().taskId).to.be.a('string'));",
+                  "console.log('➡️ Vérifier les logs Marcel :');",
+                  "console.log('  INFO  ToolExecutionGuard : ... HITL write bypassé');",
+                  "console.log('  DEBUG PathValidator : Chemin autorisé (workspace externe déclaré)');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Écris un fichier test-e2m3.txt contenant 'bypass OK' dans le dossier {{externalWorkspacePath}}\",\n  \"projectId\": \"{{projectId}}\",\n  \"conversationId\": \"{{conversationId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3.3 Tâche — écriture hors tout workspace (HITL attendu)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+                  "console.log('➡️ Vérifier les logs Marcel :');",
+                  "console.log('  DEBUG ToolExecutionGuard : Vérification HITL pour ... (risque HIGH)');",
+                  "console.log('  Une popup HITL doit apparaître dans la console/Telegram');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Écris un fichier dans C:\\\\Windows\\\\System32\\\\test.txt\",\n  \"projectId\": \"{{projectId}}\",\n  \"conversationId\": \"{{conversationId}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 — Sécurité path-traversal",
+      "item": [
+        {
+          "name": "4.1 Traversal hors workspace externe — rejeté",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('202 Accepted (tâche soumise)', () => pm.response.to.have.status(202));",
+                  "console.log('➡️ Vérifier le résultat de la tâche dans les logs :');",
+                  "console.log('  INFO  PathValidator : Chemin rejeté (hors workspace) ...');",
+                  "console.log('  INFO  ToolExecutionGuard : ... refuse par PathValidator : path violation');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Écris dans {{externalWorkspacePath}}\\\\..\\\\..\\\\..\\\\Windows\\\\System32\\\\evil.txt\",\n  \"projectId\": \"{{projectId}}\",\n  \"conversationId\": \"{{conversationId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "4.2 Traversal dans workspace interne — rejeté",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('202 Accepted (tâche soumise)', () => pm.response.to.have.status(202));",
+                  "console.log('➡️ Résultat attendu : path violation dans les logs');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Écris dans workspace/../../etc/passwd\",\n  \"projectId\": \"{{projectId}}\",\n  \"conversationId\": \"{{conversationId}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 — Régression E2-M1/M2",
+      "item": [
+        {
+          "name": "5.1 Lister les projets actifs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('tableau', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/projects"
+          }
+        },
+        {
+          "name": "5.2 Archiver le projet de test",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('status ARCHIVED', () => pm.expect(pm.response.json().status).to.equal('ARCHIVED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/projects/{{projectId}}/archive"
+          }
+        },
+        {
+          "name": "5.3 Conversation sur projet archivé → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/projects/{{projectId}}/conversations"
+          }
+        },
+        {
+          "name": "5.4 Désarchiver le projet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('status ACTIVE', () => pm.expect(pm.response.json().status).to.equal('ACTIVE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/projects/{{projectId}}/unarchive"
+          }
+        },
+        {
+          "name": "5.5 Supprimer le projet — workspaces supprimés en cascade",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/projects/{{projectId}}"
+          }
+        },
+        {
+          "name": "5.6 GET projet supprimé → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/projects/{{projectId}}"
+          }
+        }
+      ]
+    }
+  ]
+}

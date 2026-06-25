@@ -1,0 +1,486 @@
+{
+  "info": {
+    "name": "Marcel Maestro — E2-M2 Conversations",
+    "description": "Plan de test E2-M2 : Entité Conversation + JdbcChatMemory + isolation mémoire.\nLes requêtes sont ordonnées et s'enchaînent via les variables de collection (projectId, conversationId1, conversationId2).\nDémarrer l'app avant d'exécuter.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",            "value": "http://localhost:8080", "type": "string" },
+    { "key": "projectId",          "value": "",                      "type": "string" },
+    { "key": "projectIdArchived",  "value": "",                      "type": "string" },
+    { "key": "conversationId1",    "value": "",                      "type": "string" },
+    { "key": "conversationId2",    "value": "",                      "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "T2 — Conversations",
+      "item": [
+        {
+          "name": "[Setup] Créer projet ACTIVE",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('id présent', () => pm.expect(body.id).to.be.a('string'));",
+              "pm.collectionVariables.set('projectId', body.id);",
+              "console.log('projectId capturé:', body.id);"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Projet E2-M2 Test\"\n}" }
+          }
+        },
+        {
+          "name": "Démarrer conversation (conv1)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('id présent', () => pm.expect(body.id).to.be.a('string'));",
+              "pm.test('status OPEN', () => pm.expect(body.status).to.eql('OPEN'));",
+              "pm.test('projectId correct', () => pm.expect(body.projectId).to.eql(pm.collectionVariables.get('projectId')));",
+              "pm.collectionVariables.set('conversationId1', body.id);",
+              "console.log('conversationId1 capturé:', body.id);"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "Lister conversations du projet (1 résultat)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('1 conversation', () => pm.expect(body).to.have.lengthOf(1));",
+              "pm.test('ID correct', () => pm.expect(body[0].id).to.eql(pm.collectionVariables.get('conversationId1')));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "Démarrer conversation (conv2)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('IDs différents', () => pm.expect(body.id).to.not.eql(pm.collectionVariables.get('conversationId1')));",
+              "pm.collectionVariables.set('conversationId2', body.id);",
+              "console.log('conversationId2 capturé:', body.id);"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "Lister conversations du projet (2 résultats)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('2 conversations', () => pm.expect(body).to.have.lengthOf(2));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "Détail conversation 1",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('id correct', () => pm.expect(body.id).to.eql(pm.collectionVariables.get('conversationId1')));",
+              "pm.test('status OPEN', () => pm.expect(body.status).to.eql('OPEN'));",
+              "pm.test('startedAt présent', () => pm.expect(body.startedAt).to.be.a('string'));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId1}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId1}}"]
+            }
+          }
+        },
+        {
+          "name": "Détail conversation — ID inconnu → 404",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+              "const body = pm.response.json();",
+              "pm.test('message erreur présent', () => pm.expect(body.error).to.include('introuvable'));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "T3 — Messages & isolation mémoire",
+      "item": [
+        {
+          "name": "Ajouter message 1 dans conv1",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId1}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId1}}", "messages"]
+            },
+            "body": { "mode": "raw", "raw": "{\n  \"content\": \"Bonjour depuis conv1\"\n}" }
+          }
+        },
+        {
+          "name": "Ajouter message 2 dans conv1",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId1}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId1}}", "messages"]
+            },
+            "body": { "mode": "raw", "raw": "{\n  \"content\": \"Second message conv1\"\n}" }
+          }
+        },
+        {
+          "name": "Ajouter message dans conv2",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId2}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId2}}", "messages"]
+            },
+            "body": { "mode": "raw", "raw": "{\n  \"content\": \"Bonjour depuis conv2\"\n}" }
+          }
+        },
+        {
+          "name": "Lire messages conv1 → 2 messages (isolation)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('2 messages dans conv1', () => pm.expect(body).to.have.lengthOf(2));",
+              "pm.test('type USER', () => body.forEach(m => pm.expect(m.type).to.eql('USER')));",
+              "pm.test('1er message correct', () => pm.expect(body[0].content).to.eql('Bonjour depuis conv1'));",
+              "pm.test('2e message correct', () => pm.expect(body[1].content).to.eql('Second message conv1'));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId1}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId1}}", "messages"]
+            }
+          }
+        },
+        {
+          "name": "Lire messages conv2 → 1 message seulement (isolation ✓)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('1 seul message dans conv2', () => pm.expect(body).to.have.lengthOf(1));",
+              "pm.test('contenu correct', () => pm.expect(body[0].content).to.eql('Bonjour depuis conv2'));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId2}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId2}}", "messages"]
+            }
+          }
+        },
+        {
+          "name": "Ajouter message vide → 400",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+              "const body = pm.response.json();",
+              "pm.test('message erreur présent', () => pm.expect(body.error).to.include('content'));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId1}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId1}}", "messages"]
+            },
+            "body": { "mode": "raw", "raw": "{\n  \"content\": \"\"\n}" }
+          }
+        },
+        {
+          "name": "Lire messages — conversationId inconnu → 404",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/00000000-0000-0000-0000-000000000000/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "00000000-0000-0000-0000-000000000000", "messages"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "T4 — Rejet projet archivé",
+      "item": [
+        {
+          "name": "[Setup] Créer projet pour archivage",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('projectIdArchived', pm.response.json().id);"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Projet À Archiver E2-M2\"\n}" }
+          }
+        },
+        {
+          "name": "Archiver le projet",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('status ARCHIVED', () => pm.expect(pm.response.json().status).to.eql('ARCHIVED'));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdArchived}}/archive",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectIdArchived}}", "archive"]
+            }
+          }
+        },
+        {
+          "name": "Démarrer conversation sur projet archivé → 409",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
+              "const body = pm.response.json();",
+              "pm.test('message erreur archivé', () => pm.expect(body.error).to.include('archivé'));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdArchived}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectIdArchived}}", "conversations"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "T5 — Persistance redémarrage",
+      "description": "Exécuter T3 d'abord, redémarrer l'app, puis rejouer ces requêtes. Les messages doivent toujours être présents.",
+      "item": [
+        {
+          "name": "[Persistance] Lire messages conv1 après redémarrage",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('2 messages survivent au redémarrage (JDBC ✓)', () => pm.expect(body).to.have.lengthOf(2));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId1}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId1}}", "messages"]
+            }
+          }
+        },
+        {
+          "name": "[Persistance] Lire messages conv2 après redémarrage",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('1 message survit au redémarrage (JDBC ✓)', () => pm.expect(body).to.have.lengthOf(1));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId2}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId2}}", "messages"]
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "T6 — Non-régression E2-M1",
+      "item": [
+        {
+          "name": "GET /projects (liste tous)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('tableau non vide', () => pm.expect(pm.response.json().length).to.be.above(0));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/projects?status=ALL", "host": ["{{baseUrl}}"], "path": ["projects"], "query": [{ "key": "status", "value": "ALL" }] }
+          }
+        },
+        {
+          "name": "GET /projects?status=ARCHIVED",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('contient le projet archivé', () => {",
+              "  const ids = body.map(p => p.id);",
+              "  pm.expect(ids).to.include(pm.collectionVariables.get('projectIdArchived'));",
+              "});"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/projects?status=ARCHIVED", "host": ["{{baseUrl}}"], "path": ["projects"], "query": [{ "key": "status", "value": "ARCHIVED" }] }
+          }
+        },
+        {
+          "name": "DELETE /projects/{{projectId}} → cascade conversations",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            }
+          }
+        },
+        {
+          "name": "GET /projects/{{projectId}}/conversations → 404 (projet supprimé)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+            ], "type": "text/javascript" }
+          }],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        }
+      ]
+    }
+
+  ]
+}

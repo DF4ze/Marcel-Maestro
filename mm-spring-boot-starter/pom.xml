@@ -71,6 +71,15 @@
             <artifactId>flyway-core</artifactId>
         </dependency>
 
+        <!-- E2-M2 — JdbcChatMemoryRepository Spring AI 1.1.7.
+             Non-starter : pas d'autoconfiguration Spring AI → on câble le bean nous-mêmes
+             dans MmChatMemoryAutoConfiguration (évite la double autoconfiguration).
+             La version est gérée par spring-ai-bom dans le parent. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-model-chat-memory-repository-jdbc</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

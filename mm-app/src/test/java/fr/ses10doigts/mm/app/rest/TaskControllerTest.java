@@ -21,7 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * Tests unitaires du contrôleur REST de pilotage (étape 8).
+ * Tests unitaires du contrôleur REST de pilotage (étape 8, E2-M3).
  *
  * <p>Utilise {@code @WebMvcTest} pour charger uniquement la couche web
  * et injecter des mocks pour le {@link Dispatcher} et la {@link TaskQueue}.</p>
@@ -40,7 +40,8 @@ class TaskControllerTest {
     private TaskQueue taskQueue;
 
     /**
-     * POST /api/tasks doit retourner HTTP 202 avec un taskId généré.
+     * POST /api/tasks sans projectId — rétro-compatibilité : doit retourner HTTP 202.
+     * Le JSON ne contient que {@code content} (champs optionnels absents → null).
      */
     @Test
     void postSubmit_retourne202AvecTaskId() throws Exception {
@@ -51,6 +52,34 @@ class TaskControllerTest {
                 .andExpect(jsonPath("$.taskId").isNotEmpty());
 
         verify(taskQueue).submit(any());
+    }
+
+    /**
+     * POST /api/tasks avec projectId et conversationId (E2-M3) — doit propager le contexte.
+     * Le taskId retourné doit être non vide ; la tâche soumise à la queue doit avoir
+     * le bon contexte (vérifié via le capteur ArgumentCaptor).
+     */
+    @Test
+    void postSubmit_avecProjectId_propage_contexte() throws Exception {
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "content": "Écris un fichier dans le workspace externe",
+                                  "projectId": "proj-e2m3",
+                                  "conversationId": "conv-abc"
+                                }
+                                """))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.taskId").isNotEmpty());
+
+        org.mockito.ArgumentCaptor<fr.ses10doigts.mm.core.agent.TaskMessage> captor =
+                org.mockito.ArgumentCaptor.forClass(fr.ses10doigts.mm.core.agent.TaskMessage.class);
+        verify(taskQueue).submit(captor.capture());
+
+        fr.ses10doigts.mm.core.agent.TaskMessage submitted = captor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals("proj-e2m3", submitted.ctx().projectId());
+        org.junit.jupiter.api.Assertions.assertEquals("conv-abc", submitted.ctx().conversationId());
     }
 
     /**

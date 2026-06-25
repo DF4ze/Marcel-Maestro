@@ -26,6 +26,8 @@ spring:
         enabled: false
 
 mm:
+  workspace:
+    root: ./target/test-workspace
   hitl:
     console:
       enabled: false

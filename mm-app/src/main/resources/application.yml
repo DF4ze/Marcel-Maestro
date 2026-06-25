@@ -15,6 +15,13 @@ spring:
   main:
     web-application-type: servlet
 
+  # E2-M1 — Virtual threads Java 21 Loom (ADR-020).
+  # Spring Boot 3.2+ active automatiquement les virtual threads pour Tomcat,
+  # @Async et le mmDispatcherExecutor (cf. DispatcherAutoConfiguration).
+  threads:
+    virtual:
+      enabled: true
+
   # ── Étape 5 — Mémoire factuelle (SQLite, ADR-014) ──
   datasource:
     url: jdbc:sqlite:data/mm-memory.db

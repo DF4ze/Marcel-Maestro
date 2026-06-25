@@ -1,0 +1,282 @@
+{
+  "info": {
+    "name": "Marcel Maestro — E2-M1 Projects",
+    "description": "CRUD complet des projets (E2-M1). Importer dans Postman, puis définir la variable 'baseUrl' si besoin (défaut : http://localhost:8080).\n\nFlux suggéré :\n1. Créer un projet → copier l'id dans la variable 'projectId'\n2. Lister / Détail / Archiver / Désarchiver\n3. Ajouter un workspace externe → copier wsId\n4. Retirer le workspace\n5. Supprimer le projet\n6. Tester la collision de nom (409)\n7. Importer un dossier existant",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "projectId",
+      "value": "REMPLACER_PAR_UN_ID",
+      "type": "string"
+    },
+    {
+      "key": "wsId",
+      "value": "REMPLACER_PAR_UN_WS_ID",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Projets",
+      "item": [
+        {
+          "name": "Créer un projet",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mon Premier Projet\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Sanitise le nom en slug kebab-case, crée le dossier dans le workspace, insère en DB.\nRécupérer l'id retourné et le coller dans la variable 'projectId'."
+          }
+        },
+        {
+          "name": "Lister les projets (ACTIVE)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Retourne uniquement les projets ACTIVE (défaut)."
+          }
+        },
+        {
+          "name": "Lister les projets (ARCHIVED)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects?status=ARCHIVED",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"],
+              "query": [{ "key": "status", "value": "ARCHIVED" }]
+            }
+          }
+        },
+        {
+          "name": "Lister les projets (ALL)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects?status=ALL",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"],
+              "query": [{ "key": "status", "value": "ALL" }]
+            }
+          }
+        },
+        {
+          "name": "Détail d'un projet",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            },
+            "description": "Retourne le projet avec ses workspaces externes."
+          }
+        },
+        {
+          "name": "Renommer un projet",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nouveau Nom Affiché\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            },
+            "description": "Change le nom d'affichage sans modifier le slug ni le dossier."
+          }
+        },
+        {
+          "name": "Archiver un projet",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/archive",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "archive"]
+            },
+            "description": "ACTIVE → ARCHIVED. Le projet devient consultable uniquement."
+          }
+        },
+        {
+          "name": "Désarchiver un projet",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/unarchive",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "unarchive"]
+            },
+            "description": "ARCHIVED → ACTIVE."
+          }
+        },
+        {
+          "name": "Supprimer un projet (irréversible)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            },
+            "description": "Supprime la ligne DB + le dossier filesystem. Irréversible. Retourne 204."
+          }
+        },
+        {
+          "name": "Importer un dossier existant",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mon Deuxieme Projet\",\n  \"path\": \"D:\\\\Documents\\\\Spring\\\\Marcel-Maestro\\\\workspace\\\\autre\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/import",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "import"]
+            },
+            "description": "Enregistre un dossier préexistant comme projet sans le recréer.\n• 'name' : nom d'affichage (doit donner un slug différent de tous les projets existants)\n• 'path' : chemin absolu d'un dossier qui existe déjà sur le filesystem"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workspaces externes",
+      "item": [
+        {
+          "name": "Ajouter un dossier externe",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": \"D:\\\\Documents\\\\Spring\\\\Marcel-Maestro\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/workspaces",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "workspaces"]
+            },
+            "description": "Déclare un dossier externe existant sur le projet.\nLe chemin doit être absolu et le dossier doit exister.\nRécupérer le wsId retourné et le coller dans la variable 'wsId'."
+          }
+        },
+        {
+          "name": "Retirer un dossier externe",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/workspaces/{{wsId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "workspaces", "{{wsId}}"]
+            },
+            "description": "Retire le dossier externe de la DB uniquement. Le dossier filesystem n'est pas supprimé. Retourne 204."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cas d'erreur",
+      "item": [
+        {
+          "name": "Collision de slug → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"mon premier projet\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Si 'Mon Premier Projet' existe déjà, ce nom donne le même slug 'mon-premier-projet'.\nAttendu : 409 Conflict avec {\"error\": \"Un projet avec le slug 'mon-premier-projet' existe déjà...\"}"
+          }
+        },
+        {
+          "name": "Projet introuvable → 404",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/id-qui-nexiste-pas",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "id-qui-nexiste-pas"]
+            },
+            "description": "Attendu : 404 Not Found avec {\"error\": \"Projet introuvable : id-qui-nexiste-pas\"}"
+          }
+        },
+        {
+          "name": "Nom vide → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Attendu : 400 Bad Request avec {\"error\": \"Le champ 'name' est obligatoire...\"}"
+          }
+        },
+        {
+          "name": "Workspace chemin relatif → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": \"chemin/relatif\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/workspaces",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "workspaces"]
+            },
+            "description": "Attendu : 400 Bad Request — le chemin doit être absolu."
+          }
+        }
+      ]
+    }
+  ]
+}

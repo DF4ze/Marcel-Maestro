@@ -27,6 +27,9 @@ import fr.ses10doigts.mm.starter.memory.JpaMemoryStore;
 import fr.ses10doigts.mm.starter.memory.MemoryEntryRepository;
 import fr.ses10doigts.mm.starter.prompt.AutonomySystemPromptExtension;
 import fr.ses10doigts.mm.starter.prompt.ToolsSystemPromptExtension;
+import fr.ses10doigts.mm.core.tool.WorkspaceRegistry;
+import fr.ses10doigts.mm.starter.project.JpaWorkspaceRegistry;
+import fr.ses10doigts.mm.starter.project.ProjectWorkspaceRepository;
 import fr.ses10doigts.mm.starter.tool.RememberFactTool;
 import java.nio.file.Path;
 import java.util.List;
@@ -53,8 +56,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  * LLM, la boucle n'est pas cablee et le demarrage reste vert.</p>
  */
 @AutoConfiguration
-@EnableJpaRepositories(basePackages = "fr.ses10doigts.mm.starter.memory")
-@EntityScan(basePackages = "fr.ses10doigts.mm.starter.memory")
+@EnableJpaRepositories(basePackages = "fr.ses10doigts.mm.starter")
+@EntityScan(basePackages = "fr.ses10doigts.mm.starter")
 @EnableConfigurationProperties({JournalProperties.class, HitlChannelProperties.class})
 @Slf4j
 public class MmCoreAutoConfiguration {
@@ -215,32 +218,52 @@ public class MmCoreAutoConfiguration {
     // outils
 
     /**
-     * Validateur de chemins anti path-traversal.
+     * Registre des dossiers de travail externes déclarés par projet (ADR-023, E2-M3).
      *
-     * @param workspaceRoot racine autorisee (defaut ./workspace)
+     * <p>Implémentation JPA : interroge {@code project_workspace} en base.</p>
+     *
+     * @param workspaceRepository repository JPA des workspaces
+     * @return registre prêt
+     */
+    @Bean
+    @ConditionalOnMissingBean(WorkspaceRegistry.class)
+    public JpaWorkspaceRegistry jpaWorkspaceRegistry(ProjectWorkspaceRepository workspaceRepository) {
+        return new JpaWorkspaceRegistry(workspaceRepository);
+    }
+
+    /**
+     * Validateur de chemins anti path-traversal (E2-M3 : étendu aux workspaces externes).
+     *
+     * @param workspaceRoot     racine autorisée (défaut ./workspace)
+     * @param workspaceRegistry registre des dossiers externes (optionnel)
      * @return validateur
      */
     @Bean
     @ConditionalOnMissingBean
     public PathValidator pathValidator(
-            @Value("${mm.workspace.root:./workspace}") String workspaceRoot) {
-        return new PathValidator(Path.of(workspaceRoot));
+            @Value("${mm.workspace.root:./workspace}") String workspaceRoot,
+            ObjectProvider<WorkspaceRegistry> workspaceRegistry) {
+        return new PathValidator(Path.of(workspaceRoot), workspaceRegistry.getIfAvailable());
     }
 
     /**
-     * Garde d'execution transverse : HITL + path validation + timeout.
+     * Garde d'exécution transverse : bypass workspace déclaré + HITL + path validation + timeout.
      *
-     * @param hitlGuard     garde HITL optionnel
-     * @param pathValidator validateur de chemins optionnel
-     * @return garde configure
+     * @param hitlGuard         garde HITL optionnel
+     * @param pathValidator     validateur de chemins optionnel
+     * @param workspaceRegistry registre des dossiers externes optionnel
+     * @return garde configuré
      */
     @Bean
     @ConditionalOnMissingBean
     public ToolExecutionGuard toolExecutionGuard(
             ObjectProvider<HitlGuard> hitlGuard,
-            ObjectProvider<PathValidator> pathValidator) {
+            ObjectProvider<PathValidator> pathValidator,
+            ObjectProvider<WorkspaceRegistry> workspaceRegistry) {
         return new ToolExecutionGuard(
-                hitlGuard.getIfAvailable(), pathValidator.getIfAvailable());
+                hitlGuard.getIfAvailable(),
+                pathValidator.getIfAvailable(),
+                workspaceRegistry.getIfAvailable());
     }
 
     /**

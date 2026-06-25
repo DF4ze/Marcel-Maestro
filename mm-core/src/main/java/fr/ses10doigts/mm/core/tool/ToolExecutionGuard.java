@@ -3,7 +3,9 @@ package fr.ses10doigts.mm.core.tool;
 import fr.ses10doigts.mm.core.agent.AgentContext;
 import fr.ses10doigts.mm.core.hitl.HitlGuard;
 import fr.ses10doigts.mm.core.hitl.HitlVerdict;
+import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -11,50 +13,90 @@ import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Couche de securite transverse enveloppant chaque execution d'outil (etape 6).
+ * Couche de sécurité transverse enveloppant chaque exécution d'outil (étape 6, E2-M3+).
  *
- * <p>Applique sequentiellement :</p>
+ * <p>Applique séquentiellement :</p>
  * <ol>
- *   <li><strong>HITL</strong> : si un {@link HitlGuard} est present, verifie le
- *       consentement humain. Un refus retourne un {@link ToolResult#fail} sans
- *       executer l'outil.</li>
- *   <li><strong>Path validation</strong> : si un {@link PathValidator} est present,
- *       valide que les parametres de type chemin ne sortent pas du workspace.</li>
- *   <li><strong>Timeout</strong> : execute l'outil dans un {@link CompletableFuture}
- *       borne par {@link AgentTool#maxExecutionTimeMs()}.</li>
+ *   <li><strong>Rejet système (ADR-023)</strong> : tout chemin absolu pointant vers un
+ *       répertoire système (détecté par {@link SystemPathGuard}) est rejeté <em>avant</em>
+ *       toute consultation HITL. Aucun bypass n'est possible pour les chemins système.</li>
+ *   <li><strong>Bypass workspace déclaré (ADR-023)</strong> : si un {@link WorkspaceRegistry}
+ *       est présent et qu'au moins un paramètre chemin appartient à un dossier externe déclaré
+ *       pour le projet courant, le HITL write est bypassé structurellement.</li>
+ *   <li><strong>HITL</strong> : si pas de bypass, et si un {@link HitlGuard} est présent,
+ *       vérifie le consentement humain pour les chemins non-système hors workspace.
+ *       Un refus retourne un {@link ToolResult#fail} sans exécuter l'outil.
+ *       En cas d'approbation, le flag {@code hitlApproved} est transmis à
+ *       {@link PathValidator} pour autoriser le chemin.</li>
+ *   <li><strong>Path validation</strong> : si un {@link PathValidator} est présent, valide
+ *       les chemins selon la politique complète (voir sa JavaDoc). Le flag
+ *       {@code hitlApproved || bypassHitl} est transmis pour ne pas bloquer les chemins
+ *       qui ont été approuvés humainement.</li>
+ *   <li><strong>Timeout</strong> : exécute l'outil dans un {@link CompletableFuture} borné
+ *       par {@link AgentTool#maxExecutionTimeMs()}.</li>
  * </ol>
  *
- * <p>Concu pour etre instancie une fois par le moteur et partage entre tous les outils.
- * Les deux gardes (HITL, path) sont optionnels ({@code null}-safe).</p>
+ * <p>Conçu pour être instancié une fois par le moteur et partagé entre tous les outils.
+ * Les gardes (HITL, path, workspace) sont optionnels ({@code null}-safe).</p>
  */
 @Slf4j
 public class ToolExecutionGuard {
 
     private final HitlGuard hitlGuard;
     private final PathValidator pathValidator;
+    private final WorkspaceRegistry workspaceRegistry;
 
     /**
-     * @param hitlGuard     garde HITL ; peut etre {@code null} (pas de consentement requis)
-     * @param pathValidator validateur de chemins ; peut etre {@code null} (pas de restriction)
+     * Constructeur complet.
+     *
+     * @param hitlGuard         garde HITL ; peut être {@code null}
+     * @param pathValidator     validateur de chemins ; peut être {@code null}
+     * @param workspaceRegistry registre des dossiers externes ; peut être {@code null}
      */
-    public ToolExecutionGuard(HitlGuard hitlGuard, PathValidator pathValidator) {
+    public ToolExecutionGuard(HitlGuard hitlGuard, PathValidator pathValidator,
+                              WorkspaceRegistry workspaceRegistry) {
         this.hitlGuard = hitlGuard;
         this.pathValidator = pathValidator;
+        this.workspaceRegistry = workspaceRegistry;
     }
 
     /**
-     * Execute un outil avec les gardes de securite.
+     * Constructeur sans registre de workspaces (pas de bypass ADR-023).
      *
-     * @param tool   outil a executer
-     * @param params parametres deserialises
-     * @param ctx    contexte d'execution
-     * @return resultat de l'execution (succes ou echec)
+     * <p>Utilisé dans les tests unitaires existants de mm-core.</p>
+     *
+     * @param hitlGuard     garde HITL ; peut être {@code null}
+     * @param pathValidator validateur de chemins ; peut être {@code null}
+     */
+    public ToolExecutionGuard(HitlGuard hitlGuard, PathValidator pathValidator) {
+        this(hitlGuard, pathValidator, null);
+    }
+
+    /**
+     * Exécute un outil avec les gardes de sécurité.
+     *
+     * @param tool   outil à exécuter
+     * @param params paramètres désérialisés
+     * @param ctx    contexte d'exécution
+     * @return résultat de l'exécution (succès ou échec)
      */
     public ToolResult execute(AgentTool tool, Map<String, Object> params, AgentContext ctx) {
         String toolName = tool.name();
 
-        // 1. HITL guard
-        if (hitlGuard != null) {
+        // 1. Chemins système → rejet immédiat, aucun bypass possible
+        Optional<String> dangerousPath = findDangerousAbsolutePath(params);
+        if (dangerousPath.isPresent()) {
+            log.warn("Outil '{}' — chemin système dangereux '{}', rejet immédiat (pas de HITL)",
+                    toolName, dangerousPath.get());
+            return ToolResult.fail("path violation: chemin système interdit '" + dangerousPath.get() + "'");
+        }
+
+        // 2. Bypass HITL write si chemin dans un workspace externe déclaré (ADR-023)
+        boolean bypassHitl = isInDeclaredWorkspace(params, ctx);
+
+        // 3. HITL guard (bypassé si chemin dans workspace déclaré)
+        boolean hitlApproved = false;
+        if (!bypassHitl && hitlGuard != null) {
             log.debug("Vérification HITL pour l'outil '{}' (risque {})", toolName, tool.riskLevel());
             HitlVerdict verdict = hitlGuard.check(toolName, tool.description(), tool.riskLevel(), params, ctx);
             if (!verdict.allowed()) {
@@ -62,19 +104,21 @@ public class ToolExecutionGuard {
                 return ToolResult.fail("denied: " + verdict.reason());
             }
             log.debug("Outil '{}' autorisé par HITL : {}", toolName, verdict.reason());
+            hitlApproved = true;
         }
 
-        // 2. Path validation
+        // 4. Path validation — transmet le flag d'approbation HITL pour autoriser les chemins
+        //    absolus non-système hors workspace qui ont été approuvés par l'humain
         if (pathValidator != null) {
             try {
-                pathValidator.validateParams(params);
+                pathValidator.validateParams(params, ctx, bypassHitl || hitlApproved);
             } catch (ToolException e) {
-                log.info("Outil '{}' refuse par PathValidator : {}", toolName, e.getMessage());
+                log.info("Outil '{}' refusé par PathValidator : {}", toolName, e.getMessage());
                 return ToolResult.fail("path violation: " + e.getMessage());
             }
         }
 
-        // 3. Execution avec timeout
+        // 5. Exécution avec timeout
         long timeoutMs = tool.maxExecutionTimeMs();
         log.debug("Exécution de l'outil '{}' (timeout {} ms)", toolName, timeoutMs);
 
@@ -84,18 +128,18 @@ public class ToolExecutionGuard {
                         try {
                             return tool.execute(params, ctx);
                         } catch (ToolException e) {
-                            log.info("ToolException lors de l'execution de '{}' : {}", toolName, e.getMessage());
+                            log.info("ToolException lors de l'exécution de '{}' : {}", toolName, e.getMessage());
                             return ToolResult.fail(e.getMessage());
                         }
                     })
                     .get(timeoutMs, TimeUnit.MILLISECONDS);
 
-            log.info("Outil '{}' termine (succes={})", toolName, result.success());
-            log.debug("Resultat de '{}' : {}", toolName, result.data());
+            log.info("Outil '{}' terminé (succès={})", toolName, result.success());
+            log.debug("Résultat de '{}' : {}", toolName, result.data());
             return result;
 
         } catch (TimeoutException e) {
-            log.info("Outil '{}' timeout apres {} ms", toolName, timeoutMs);
+            log.info("Outil '{}' timeout après {} ms", toolName, timeoutMs);
             return ToolResult.fail("timeout after " + timeoutMs + " ms");
 
         } catch (InterruptedException e) {
@@ -108,5 +152,68 @@ public class ToolExecutionGuard {
             log.info("Outil '{}' erreur inattendue : {}", toolName, cause.getMessage());
             return ToolResult.fail("execution error: " + cause.getMessage());
         }
+    }
+
+    /**
+     * Retourne le premier chemin absolu pointant vers un répertoire système dangereux.
+     *
+     * <p>Seuls les chemins <em>absolus</em> sont inspectés ici. Les chemins relatifs qui
+     * tentent d'échapper au workspace (path traversal) sont détectés plus tard par
+     * {@link PathValidator}.</p>
+     *
+     * @param params paramètres de l'outil
+     * @return le chemin dangereux, ou {@link Optional#empty()} si aucun n'est détecté
+     */
+    private Optional<String> findDangerousAbsolutePath(Map<String, Object> params) {
+        if (params == null) return Optional.empty();
+        for (Object value : params.values()) {
+            if (value instanceof String path && PathValidator.PATH_LIKE_PATTERN.matcher(path).find()) {
+                try {
+                    Path p = Path.of(path);
+                    if (p.isAbsolute() && SystemPathGuard.isDangerous(p.normalize())) {
+                        return Optional.of(path);
+                    }
+                } catch (Exception ignored) { /* chemin invalide → ignoré */ }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Vérifie si au moins un paramètre chemin de l'appel est dans un dossier externe déclaré
+     * pour le projet courant.
+     *
+     * <p>Retourne {@code false} (pas de bypass) si :</p>
+     * <ul>
+     *   <li>le {@link WorkspaceRegistry} n'est pas injecté ;</li>
+     *   <li>le contexte est {@code null} ou ne porte pas de {@code projectId} ;</li>
+     *   <li>aucun paramètre String ne ressemble à un chemin ;</li>
+     *   <li>aucun chemin détecté n'appartient à un dossier déclaré du projet.</li>
+     * </ul>
+     *
+     * @param params paramètres de l'outil
+     * @param ctx    contexte d'exécution courant
+     * @return {@code true} si le HITL write doit être bypassé
+     */
+    private boolean isInDeclaredWorkspace(Map<String, Object> params, AgentContext ctx) {
+        if (workspaceRegistry == null || params == null || ctx == null) {
+            return false;
+        }
+        String projectId = ctx.projectId();
+        if (projectId == null || projectId.isBlank()) {
+            return false;
+        }
+        for (Object value : params.values()) {
+            if (value instanceof String path && PathValidator.PATH_LIKE_PATTERN.matcher(path).find()) {
+                if (workspaceRegistry.isInDeclaredWorkspace(path, projectId)) {
+                    log.info("Chemin '{}' dans workspace déclaré pour le projet '{}' — HITL write bypassé",
+                            path, projectId);
+                    return true;
+                }
+                log.debug("Chemin testé contre workspace déclaré : '{}' (projet '{}') → non déclaré",
+                        path, projectId);
+            }
+        }
+        return false;
     }
 }
