@@ -51,7 +51,7 @@ public class WriteFileTool implements AgentTool {
     /** {@inheritDoc} */
     @Override
     public String description() {
-        return "Écrit du contenu dans un fichier du workspace";
+        return "Écrire du contenu dans un fichier";
     }
 
     /** {@inheritDoc} */

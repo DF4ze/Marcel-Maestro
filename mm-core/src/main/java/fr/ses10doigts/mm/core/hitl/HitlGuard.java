@@ -2,10 +2,12 @@ package fr.ses10doigts.mm.core.hitl;
 
 import fr.ses10doigts.mm.core.agent.AgentContext;
 import fr.ses10doigts.mm.core.tool.RiskLevel;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Garde-fou HITL : décide <strong>quand</strong> demander un consentement humain avant
@@ -34,6 +36,7 @@ import java.util.Set;
  * encore intégré dans la boucle {@code AgentLoop} pour les tool_calls. L'interception se
  * fera à l'étape 6 au même point que {@code AgentTool.execute()} (voir roadmap).</p>
  */
+@Slf4j
 public final class HitlGuard {
 
     private final HitlPolicy policy;
@@ -83,6 +86,9 @@ public final class HitlGuard {
                 riskLevel,
                 ctx);
 
+        log.info("HITL ask — outil='{}', riskLevel={}, question : {}", toolName, riskLevel,
+                request.question().lines().limit(3).reduce("", (a, b) -> a + "\n  " + b).strip());
+
         ConsentDecision decision = interaction.ask(request);
 
         // 4. Enregistrer dans le cache et retourner le verdict
@@ -107,60 +113,59 @@ public final class HitlGuard {
     /**
      * Construit la question affichée à l'utilisateur lors d'une demande HITL.
      *
-     * <p>Format :</p>
+     * <p>Format (priorité à la lisibilité immédiate) :</p>
      * <ol>
-     *   <li>Nom de l'outil + sa description fonctionnelle</li>
-     *   <li>Niveau de risque</li>
-     *   <li>Paramètres "chemin" (path, file, …) en premier, mis en valeur —
-     *       indispensable pour que l'utilisateur sache quel fichier est impacté</li>
+     *   <li>En-tête : nom de l'outil</li>
+     *   <li>Chemin(s) impacté(s) <strong>en premier</strong> — l'utilisateur doit voir
+     *       immédiatement quel fichier est concerné, sans avoir à lire tout le message</li>
      *   <li>Autres paramètres, tronqués à {@value #MAX_PARAM_VALUE_LENGTH} caractères
-     *       pour éviter que le contenu d'un fichier noie l'information clé</li>
+     *       pour ne pas noyer l'information clé</li>
+     *   <li>Si aucun chemin, fallback sur la description fonctionnelle de l'outil</li>
      * </ol>
      *
      * @param toolName        nom technique de l'outil
-     * @param toolDescription description lisible de l'outil
-     * @param riskLevel       niveau de risque
+     * @param toolDescription description lisible de l'outil (fallback si pas de chemin)
+     * @param riskLevel       niveau de risque (non affiché ici — déjà dans le titre Telegram/Console)
      * @param params          paramètres d'exécution
      * @return question lisible pour l'humain
      */
     private static String buildQuestion(String toolName, String toolDescription,
                                         RiskLevel riskLevel, Map<String, Object> params) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Outil : ").append(toolName);
+        List<String> paths = new ArrayList<>();
+        List<String> others = new ArrayList<>();
 
-        if (toolDescription != null && !toolDescription.isBlank()) {
+        if (params != null) {
+            params.forEach((k, v) -> {
+                if (v == null) return;
+                String s = String.valueOf(v);
+                if (PATH_PARAM_KEYS.contains(k.toLowerCase())) {
+                    paths.add(s);
+                } else {
+                    if (s.length() > MAX_PARAM_VALUE_LENGTH) {
+                        s = s.substring(0, MAX_PARAM_VALUE_LENGTH) + "… [tronqué]";
+                    }
+                    others.add(k + " = " + s);
+                }
+            });
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Autorisation requise : ").append(toolName);
+
+        if (!paths.isEmpty()) {
+            // Chemin(s) en évidence immédiate — raison principale du HITL
+            for (String p : paths) {
+                sb.append("\n→ ").append(p);
+            }
+        } else if (toolDescription != null && !toolDescription.isBlank()) {
+            // Pas de chemin : afficher la description comme contexte
             sb.append("\n").append(toolDescription);
         }
 
-        sb.append("\nRisque : ").append(riskLevel);
-
-        if (params != null && !params.isEmpty()) {
-            // Réorganiser : chemins en premier, autres params ensuite
-            Map<String, Object> pathParams = new LinkedHashMap<>();
-            Map<String, Object> otherParams = new LinkedHashMap<>();
-            params.forEach((k, v) -> {
-                if (PATH_PARAM_KEYS.contains(k.toLowerCase())) {
-                    pathParams.put(k, v);
-                } else {
-                    otherParams.put(k, v);
-                }
-            });
-
-            if (!pathParams.isEmpty()) {
-                sb.append("\n\nFichier(s) impacté(s) :");
-                pathParams.forEach((k, v) ->
-                        sb.append("\n  📄 ").append(v));
-            }
-
-            if (!otherParams.isEmpty()) {
-                sb.append("\n\nAutres paramètres :");
-                otherParams.forEach((k, v) -> {
-                    String valueStr = String.valueOf(v);
-                    if (valueStr.length() > MAX_PARAM_VALUE_LENGTH) {
-                        valueStr = valueStr.substring(0, MAX_PARAM_VALUE_LENGTH) + "… [tronqué]";
-                    }
-                    sb.append("\n  • ").append(k).append(" = ").append(valueStr);
-                });
+        if (!others.isEmpty()) {
+            sb.append("\n");
+            for (String o : others) {
+                sb.append("\n• ").append(o);
             }
         }
 

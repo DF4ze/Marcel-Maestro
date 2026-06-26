@@ -22,3 +22,6 @@ Thumbs.db
 # Misc
 /data/mm-memory.db
 /workspace/*
+
+# Config locale avec credentials — ne jamais committer
+mm-app/src/main/resources/application.yml

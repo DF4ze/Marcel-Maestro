@@ -79,7 +79,9 @@ public class ConsoleHumanInteraction implements CancellableHumanInteraction {
         out.print("  > ");
         out.flush();
 
-        log.info("Console ask() — en attente de réponse HITL (riskLevel={})", request.riskLevel());
+        log.info("Console ask() — en attente de réponse HITL (riskLevel={}) :\n  {}",
+                request.riskLevel(),
+                request.question().replace("\n", "\n  "));
 
         while (true) {
             if (cancelled.get()) {

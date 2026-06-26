@@ -1,0 +1,201 @@
+{
+  "info": {
+    "name": "Marcel Maestro — E2-M4 HITL Projet",
+    "description": "Tests manuels de la règle HITL Projet (E2-M4) : isolation des consentements par projet, validation du projectId, scopes en base.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "projetA",
+      "value": "projet-facturation",
+      "type": "string"
+    },
+    {
+      "key": "projetB",
+      "value": "projet-rh",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Santé",
+      "item": [
+        {
+          "name": "GET /api/tasks — liste des tâches actives",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/tasks",
+            "description": "Vérifie que l'appli démarre et que le Dispatcher est actif.\nAttendu : HTTP 200, body { activeTasks: [], queueSize: 0 }"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Scénario A — Isolation stricte inter-projets",
+      "description": "Objectif : un consentement ALLOW_PROJECT accordé sur projet-facturation ne doit PAS être actif sur projet-rh.",
+      "item": [
+        {
+          "name": "A1 — Soumettre tâche sur Projet A (déclenchera prompt HITL)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tasks",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier rapport.txt\",\n  \"projectId\": \"{{projetA}}\",\n  \"conversationId\": \"conv-a-001\"\n}"
+            },
+            "description": "Lance une tâche sur Projet A.\nAttend : HTTP 202 + taskId.\nSur le terminal : réponds ALLOW_PROJECT au prompt HITL pour l'outil read_file."
+          }
+        },
+        {
+          "name": "A2 — Soumettre une 2e tâche sur Projet A (pas de prompt cette fois)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tasks",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier rapport.txt\",\n  \"projectId\": \"{{projetA}}\",\n  \"conversationId\": \"conv-a-002\"\n}"
+            },
+            "description": "Même outil, même projet.\nAttendu : PAS de prompt HITL — le consentement ALLOW_PROJECT est en cache.\nVérifier dans les logs : 'Consentements rechargés pour le projet projet-facturation'."
+          }
+        },
+        {
+          "name": "A3 — Soumettre la même tâche sur Projet B (prompt doit réapparaître)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tasks",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier rapport.txt\",\n  \"projectId\": \"{{projetB}}\",\n  \"conversationId\": \"conv-b-001\"\n}"
+            },
+            "description": "Même outil, AUTRE projet.\nAttendu : le prompt HITL réapparaît — le consentement de projet-facturation n'est PAS actif sur projet-rh.\nC'est le test clé de l'isolation E2-M4."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Scénario B — ALLOW_ALWAYS est global",
+      "description": "Objectif : un consentement ALLOW_ALWAYS doit supprimer le prompt HITL pour tous les projets.",
+      "item": [
+        {
+          "name": "B1 — Tâche sur Projet A → répondre ALLOW_ALWAYS",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tasks",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier rapport.txt\",\n  \"projectId\": \"{{projetA}}\",\n  \"conversationId\": \"conv-a-always\"\n}"
+            },
+            "description": "Sur le terminal : réponds ALLOW_ALWAYS au prompt HITL."
+          }
+        },
+        {
+          "name": "B2 — Tâche sur Projet B → pas de prompt",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tasks",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier rapport.txt\",\n  \"projectId\": \"{{projetB}}\",\n  \"conversationId\": \"conv-b-always\"\n}"
+            },
+            "description": "Autre projet, même outil.\nAttendu : aucun prompt HITL — ALLOW_ALWAYS est global (scope 'global' en DB)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Scénario C — Sans projectId → comportement dégradé",
+      "description": "Objectif : une tâche sans projectId ne doit pas crasher mais ALLOW_PROJECT sera refusé avec IllegalStateException si l'humain tente de le choisir.",
+      "item": [
+        {
+          "name": "C1 — Tâche sans projectId",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tasks",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier rapport.txt\"\n}"
+            },
+            "description": "Pas de projectId dans le body (le contrôleur met 'none').\nSur le terminal : tenter de répondre ALLOW_PROJECT.\nAttendu : IllegalStateException dans les logs — 'ALLOW_PROJECT requiert un projectId'.\nRépondre ALLOW_ALWAYS ou ALLOW_SESSION à la place → doit fonctionner."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Scénario D — Persistance après redémarrage",
+      "description": "Objectif : les consentements ALLOW_PROJECT survivent à un redémarrage et restent isolés par projet.",
+      "item": [
+        {
+          "name": "D1 — Accorder ALLOW_PROJECT sur Projet A",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tasks",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier rapport.txt\",\n  \"projectId\": \"{{projetA}}\",\n  \"conversationId\": \"conv-a-restart\"\n}"
+            },
+            "description": "Répondre ALLOW_PROJECT. Vérifier en DB : scope = 'project:projet-facturation'.\n\nSQL : SELECT entry_key, value, scope FROM memory_entry WHERE entry_key LIKE 'hitl:consent:%';"
+          }
+        },
+        {
+          "name": "D2 — [ACTION MANUELLE] Redémarrer l'application",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/tasks",
+            "description": "STOP l'application (Ctrl+C ou mvn spring-boot:stop), puis redémarre-la.\nCe GET est juste un health-check pour confirmer que l'appli est revenue.\nAttendu : HTTP 200."
+          }
+        },
+        {
+          "name": "D3 — Projet A après redémarrage : pas de prompt",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tasks",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier rapport.txt\",\n  \"projectId\": \"{{projetA}}\",\n  \"conversationId\": \"conv-a-after-restart\"\n}"
+            },
+            "description": "Attenud : aucun prompt HITL — rechargement lazy depuis la DB au premier outil du projet.\nVérifier dans les logs : 'Consentements rechargés pour le projet projet-facturation (démarrage de conversation)'."
+          }
+        },
+        {
+          "name": "D4 — Projet B après redémarrage : prompt réapparaît",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/tasks",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier rapport.txt\",\n  \"projectId\": \"{{projetB}}\",\n  \"conversationId\": \"conv-b-after-restart\"\n}"
+            },
+            "description": "Même outil, Projet B.\nAttendu : le prompt HITL réapparaît — le consentement de Projet A n'est pas chargé pour Projet B.\nIsolation confirmée même après redémarrage."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Vérification DB directe",
+      "item": [
+        {
+          "name": "INFO — Requête SQL à exécuter manuellement",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/tasks",
+            "description": "Pas d'endpoint REST pour la DB. Exécute ce SQL directement sur data/mm-memory.db :\n\nSELECT entry_key, value, scope, tenant\nFROM memory_entry\nWHERE entry_key LIKE 'hitl:consent:%'\nORDER BY scope;\n\nRésultats attendus après les scénarios A+B :\n- hitl:consent:read_file | ALLOW_PROJECT | project:projet-facturation | default\n- hitl:consent:read_file | ALLOW_ALWAYS  | global                     | default\n\nPas de ligne 'project:projet-rh' tant qu'aucun ALLOW_PROJECT n'y a été accordé."
+          }
+        }
+      ]
+    }
+  ]
+}

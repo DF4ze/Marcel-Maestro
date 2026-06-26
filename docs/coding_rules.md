@@ -33,3 +33,25 @@ Utiliser **Lombok** systématiquement pour éliminer le boilerplate : `@Getter`/
   paramètres (`@param`), son retour (`@return`) et les exceptions (`@throws`) le cas échéant.
 - JavaDoc également au niveau **classe** pour expliquer sa responsabilité.
 - Le JavaDoc explique le *pourquoi* / le contrat, pas la paraphrase ligne à ligne du code.
+
+## 4. Gestion de la configuration sensible
+
+`application.yml` contient des credentials (tokens, clés API, identifiants) et ne doit
+**jamais** être versionné dans Git.
+
+- `mm-app/src/main/resources/application.yml` est dans le `.gitignore` — **ne jamais
+  forcer son ajout** (`git add -f` interdit sur ce fichier).
+- Le fichier versionné de référence est `application-template.yml`, dans le même
+  répertoire. Il contient la structure complète mais **uniquement des placeholders**
+  (`${MA_VARIABLE}`) à la place de toute valeur sensible.
+- **À chaque ajout dans `application.yml`** (nouvelle clé, nouveau bloc) : répercuter
+  immédiatement la modification dans `application-template.yml`. Si la valeur est
+  sensible, remplacer par un placeholder `${NOM_VARIABLE}` et documenter la variable
+  dans l'en-tête du template. Si la valeur est non-sensible (chemin local, flag, timeout),
+  elle peut rester telle quelle dans le template.
+- Un nouveau développeur clone le dépôt, copie le template et renseigne ses propres
+  valeurs :
+  ```bash
+  cp application-template.yml application.yml
+  # puis édite application.yml avec ses credentials
+  ```

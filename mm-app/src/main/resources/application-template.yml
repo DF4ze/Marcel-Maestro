@@ -1,10 +1,16 @@
 # =====================================================================
 # Marcel Maestro (MM) — mm-app
-# Config principale. Les valeurs sensibles sont des PLACEHOLDERS via
-# variables d'environnement : renseigne-les avant de lancer.
-#   - OPENROUTER_API_KEY       : clé OpenRouter (provider LLM)
-#   - MM_TELEGRAM_BOT_TOKEN     : token du bot Telegram (BotFather)
-#   - MM_TELEGRAM_CHAT_ID       : chat id Telegram destinataire
+# TEMPLATE de configuration — ne contient aucune valeur sensible.
+#
+# Usage :
+#   cp application-template.yml application.yml
+#   # puis renseigne les variables ci-dessous dans application.yml
+#   # (ou exporte-les en variables d'environnement)
+#
+# Variables obligatoires :
+#   MM_TELEGRAM_BOT_TOKEN  : token du bot Telegram (BotFather)
+#   MM_TELEGRAM_CHAT_ID    : chat id Telegram destinataire (entier)
+#   OPENROUTER_API_KEY     : clé OpenRouter (provider LLM)
 # =====================================================================
 
 spring:
@@ -90,8 +96,7 @@ mm:
   # Côté MM : destinataire et identifiant logique du bot.
   telegram:
     bot-id: mm-bot
-    #${MM_TELEGRAM_CHAT_ID:CHANGE_ME}
-    chat-id: 1595302518
+    chat-id: ${MM_TELEGRAM_CHAT_ID}
     ask-timeout-seconds: 300
 
 # =====================================================================
@@ -100,10 +105,6 @@ mm:
 # Si le token n'est pas encore renseigné et que le bot ne démarre pas,
 # le canal Telegram est simplement absent (démarrage non bloqué) ; au
 # besoin, mettre telegram.enabled=false pour démarrer sans Telegram.
-#
-# ⚠️ La structure exacte de la config du token dépend du module
-# telegram-bots-mvc. Adapter la clé ci-dessous à celle qu'attend ton
-# module (placeholder fourni).
 # =====================================================================
 telegram:
   enabled: true
@@ -111,13 +112,13 @@ telegram:
   default-bot-id: mm-bot
   bots:
     - id: mm-bot
-      token: 8640709642:AAGpjPLYSu4EOLenhe03cP5DFLS5BmlBWT0
+      token: ${MM_TELEGRAM_BOT_TOKEN}
       polling-enabled: true
       auto-register-commands: true
       configure-menu-button: true
       security:
         allowed-user-ids:
-          - 1595302518
+          - ${MM_TELEGRAM_CHAT_ID}
       retry:
         enabled: true
         max-attempts: 3

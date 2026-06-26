@@ -20,6 +20,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.ses10doigts.mm.starter.hitl.CompositeHumanInteraction;
 import lombok.extern.slf4j.Slf4j;
 import fr.ses10doigts.mm.starter.hitl.HitlChannelProperties;
+import fr.ses10doigts.mm.starter.hitl.AgentContextHolder;
+import fr.ses10doigts.mm.starter.hitl.ContextPropagatingToolExecutionGuard;
 import fr.ses10doigts.mm.starter.hitl.PersistentConsentCache;
 import fr.ses10doigts.mm.starter.journal.FileJournal;
 import fr.ses10doigts.mm.starter.journal.JournalProperties;
@@ -169,18 +171,36 @@ public class MmCoreAutoConfiguration {
     }
 
     /**
-     * Cache de consentement avec persistance SQLite.
+     * Propagateur de contexte d'exécution par thread (E2-M4).
      *
-     * @param memoryStore store sous-jacent
-     * @param repository  acces JPA pour le rechargement initial
-     * @return cache pret (decisions pre-chargees)
+     * @return holder ThreadLocal prêt
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public AgentContextHolder agentContextHolder() {
+        return new AgentContextHolder();
+    }
+
+    /**
+     * Cache de consentement avec persistance SQLite et isolation par projet (E2-M4).
+     *
+     * <p>Au démarrage, seuls les consentements globaux (ALLOW_ALWAYS, scope {@code "global"})
+     * sont chargés — le projectId n'est pas encore connu. Les consentements
+     * ALLOW_PROJECT sont rechargés lazily par
+     * {@link ContextPropagatingToolExecutionGuard} au premier outil d'un projet.</p>
+     *
+     * @param memoryStore   store sous-jacent
+     * @param repository    acces JPA pour le rechargement filtré
+     * @param contextHolder propagateur de contexte (E2-M4)
+     * @return cache prêt avec les consentements globaux pré-chargés
      */
     @Bean
     @ConditionalOnMissingBean(ConsentCache.class)
     public PersistentConsentCache persistentConsentCache(MemoryStore memoryStore,
-                                                         MemoryEntryRepository repository) {
-        PersistentConsentCache cache = new PersistentConsentCache(memoryStore, repository);
-        cache.loadFromStore();
+                                                         MemoryEntryRepository repository,
+                                                         AgentContextHolder contextHolder) {
+        PersistentConsentCache cache = new PersistentConsentCache(memoryStore, repository, contextHolder);
+        cache.loadFromStore(); // charge uniquement les ALLOW_ALWAYS (scope global)
         return cache;
     }
 
@@ -247,23 +267,34 @@ public class MmCoreAutoConfiguration {
     }
 
     /**
-     * Garde d'exécution transverse : bypass workspace déclaré + HITL + path validation + timeout.
+     * Garde d'exécution transverse avec propagation de contexte (E2-M4).
+     *
+     * <p>Utilise {@link ContextPropagatingToolExecutionGuard} qui étend
+     * {@link ToolExecutionGuard} pour lier l'{@link AgentContextHolder} avant chaque
+     * appel d'outil, permettant à {@link PersistentConsentCache} de valider le
+     * {@code projectId} lors de l'enregistrement d'un {@code ALLOW_PROJECT}.</p>
      *
      * @param hitlGuard         garde HITL optionnel
      * @param pathValidator     validateur de chemins optionnel
      * @param workspaceRegistry registre des dossiers externes optionnel
-     * @return garde configuré
+     * @param contextHolder     propagateur de contexte par thread
+     * @param consentCache      cache de consentements persistés
+     * @return garde configuré avec propagation de contexte
      */
     @Bean
     @ConditionalOnMissingBean
     public ToolExecutionGuard toolExecutionGuard(
             ObjectProvider<HitlGuard> hitlGuard,
             ObjectProvider<PathValidator> pathValidator,
-            ObjectProvider<WorkspaceRegistry> workspaceRegistry) {
-        return new ToolExecutionGuard(
+            ObjectProvider<WorkspaceRegistry> workspaceRegistry,
+            AgentContextHolder contextHolder,
+            PersistentConsentCache consentCache) {
+        return new ContextPropagatingToolExecutionGuard(
                 hitlGuard.getIfAvailable(),
                 pathValidator.getIfAvailable(),
-                workspaceRegistry.getIfAvailable());
+                workspaceRegistry.getIfAvailable(),
+                contextHolder,
+                consentCache);
     }
 
     /**

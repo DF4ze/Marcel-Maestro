@@ -1,5 +1,6 @@
 package fr.ses10doigts.mm.starter.memory;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -46,4 +47,20 @@ public interface MemoryEntryRepository extends JpaRepository<MemoryEntryEntity, 
      * @return liste des entrées correspondantes
      */
     List<MemoryEntryEntity> findByEntryKeyStartingWithAndTenant(String prefix, String tenant);
+
+    /**
+     * Recherche les entrées dont la clé commence par un préfixe ET dont le scope
+     * appartient à la collection fournie, pour un tenant donné (E2-M4).
+     *
+     * <p>Utilisé par {@link fr.ses10doigts.mm.starter.hitl.PersistentConsentCache#loadFromStore}
+     * pour charger uniquement les consentements du projet courant ({@code "project:<id>"})
+     * et les consentements globaux ({@code "global"}), sans croiser les projets.</p>
+     *
+     * @param prefix préfixe de clé (ex. {@code "hitl:consent:"})
+     * @param scopes collection de scopes acceptés (ex. {@code ["global", "project:abc"]})
+     * @param tenant identifiant artisan
+     * @return liste filtrée des entrées correspondantes
+     */
+    List<MemoryEntryEntity> findByEntryKeyStartingWithAndScopeInAndTenant(
+            String prefix, Collection<String> scopes, String tenant);
 }
