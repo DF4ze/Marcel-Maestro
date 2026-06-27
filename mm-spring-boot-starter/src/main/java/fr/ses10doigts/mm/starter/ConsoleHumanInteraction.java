@@ -6,6 +6,7 @@ import fr.ses10doigts.mm.core.hitl.HitlRequest;
 import fr.ses10doigts.mm.starter.hitl.CancellableHumanInteraction;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
@@ -73,9 +74,20 @@ public class ConsoleHumanInteraction implements CancellableHumanInteraction {
         out.println();
         out.println(SEPARATOR);
         out.printf("  [HITL — %s]%n", request.riskLevel());
-        out.printf("  %s%n", request.question());
+        request.question().lines().forEach(line -> out.printf("  %s%n", line));
+        out.println();
+        out.printf("  UF = Une fois              DY = Refuser%n");
+        if (request.strictScopeLabel() != null) {
+            String sl = truncate(request.strictScopeLabel(), 40);
+            out.printf("  SS / SP / SA = Stricte    — %s  (conv / proj / ∞)%n", sl);
+        }
+        if (request.localScopeLabel() != null) {
+            out.printf("  LS / LP / LA = Local      — %s  (conv / proj / ∞)%n",
+                    request.localScopeLabel());
+        }
+        String toolLbl = request.toolName() != null ? request.toolName() : "outil";
+        out.printf("  XS / XP / XA = Large      — %s  (conv / proj / ∞)%n", toolLbl);
         out.println(SEPARATOR);
-        out.println("  Options : ALLOW_ONCE | ALLOW_SESSION | ALLOW_PROJECT | ALLOW_ALWAYS | DENY");
         out.print("  > ");
         out.flush();
 
@@ -108,13 +120,12 @@ public class ConsoleHumanInteraction implements CancellableHumanInteraction {
                     out.flush();
                     continue;
                 }
-                try {
-                    ConsentDecision decision = ConsentDecision.valueOf(line);
+                ConsentDecision decision = parseDecision(line);
+                if (decision != null) {
                     log.info("Console ask() — décision reçue : {}", decision);
                     return decision;
-                } catch (IllegalArgumentException e) {
-                    out.printf("  Entrée invalide '%s'. Valeurs acceptées : "
-                            + "ALLOW_ONCE, ALLOW_SESSION, ALLOW_PROJECT, ALLOW_ALWAYS, DENY%n", line);
+                } else {
+                    out.println("  Entrée invalide. Codes : UF DY | SS SP SA | LS LP LA | XS XP XA");
                     out.print("  > ");
                     out.flush();
                 }
@@ -133,6 +144,53 @@ public class ConsoleHumanInteraction implements CancellableHumanInteraction {
     public void cancelPendingAsk() {
         cancelled.set(true);
         log.debug("Console ask() — annulation demandée");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Table des codes courts et des noms complets acceptés en entrée console. */
+    private static final Map<String, ConsentDecision> SHORTCODES = Map.ofEntries(
+            Map.entry("UF", ConsentDecision.ALLOW_ONCE),
+            Map.entry("DY", ConsentDecision.DENY),
+            Map.entry("SS", ConsentDecision.ALLOW_STRICT_SESSION),
+            Map.entry("SP", ConsentDecision.ALLOW_STRICT_PROJECT),
+            Map.entry("SA", ConsentDecision.ALLOW_STRICT_ALWAYS),
+            Map.entry("LS", ConsentDecision.ALLOW_LOCAL_SESSION),
+            Map.entry("LP", ConsentDecision.ALLOW_LOCAL_PROJECT),
+            Map.entry("LA", ConsentDecision.ALLOW_LOCAL_ALWAYS),
+            Map.entry("XS", ConsentDecision.ALLOW_LARGE_SESSION),
+            Map.entry("XP", ConsentDecision.ALLOW_LARGE_PROJECT),
+            Map.entry("XA", ConsentDecision.ALLOW_LARGE_ALWAYS)
+    );
+
+    /**
+     * Parse une entrée console (code court ou nom enum complet) en {@link ConsentDecision}.
+     *
+     * @param input entrée de l'utilisateur (déjà en majuscules)
+     * @return la décision, ou {@code null} si l'entrée est invalide
+     */
+    private static ConsentDecision parseDecision(String input) {
+        ConsentDecision fromCode = SHORTCODES.get(input);
+        if (fromCode != null) return fromCode;
+        try {
+            return ConsentDecision.valueOf(input);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Tronque un texte à {@code maxLen} caractères.
+     *
+     * @param text   texte à tronquer
+     * @param maxLen longueur maximale
+     * @return texte tronqué avec "…" si nécessaire
+     */
+    private static String truncate(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() <= maxLen ? text : "…" + text.substring(text.length() - (maxLen - 1));
     }
 
     /**

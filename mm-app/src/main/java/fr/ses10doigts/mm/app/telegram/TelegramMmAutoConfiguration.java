@@ -1,8 +1,10 @@
 package fr.ses10doigts.mm.app.telegram;
 
 import fr.ses10doigts.mm.starter.MmCoreAutoConfiguration;
+import fr.ses10doigts.mm.starter.project.ProjectRepository;
 import fr.ses10doigts.telegrambots.service.sender.SimpleTelegramSender;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
@@ -36,15 +38,21 @@ public class TelegramMmAutoConfiguration {
      * <p>Conditionnel sur {@link SimpleTelegramSender} fourni par {@code TelegramAutoConfiguration}.
      * Si telegram-bots-mvc n'est pas actif, le canal est absent sans bloquer le démarrage.</p>
      *
-     * @param sender     sender Telegram (fourni par TelegramAutoConfiguration)
-     * @param properties propriétés {@code mm.telegram.*}
+     * <p>E2-M5 : {@link ProjectRepository} injecté via {@link ObjectProvider} (optionnel)
+     * pour résoudre le nom de projet dans le préfixe {@code [NomProjet]} des notifications.
+     * Si absent (tests ou contexte sans DB), la résolution est ignorée silencieusement.</p>
+     *
+     * @param sender            sender Telegram (fourni par TelegramAutoConfiguration)
+     * @param properties        propriétés {@code mm.telegram.*}
+     * @param projectRepository repository projet pour le préfixe [NomProjet] (E2-M5, optionnel)
      * @return adaptateur Telegram prêt à l'emploi
      */
     @Bean
     @ConditionalOnBean(SimpleTelegramSender.class)
     public TelegramHumanInteraction telegramHumanInteraction(
             SimpleTelegramSender sender,
-            TelegramMmProperties properties) {
+            TelegramMmProperties properties,
+            ObjectProvider<ProjectRepository> projectRepository) {
         log.info("TelegramMmAutoConfiguration — création de TelegramHumanInteraction");
         log.debug("  botId      : {}", properties.getBotId());
         log.debug("  chatId     : {}", properties.getChatId());
@@ -60,6 +68,7 @@ public class TelegramMmAutoConfiguration {
                 sender,
                 properties.getBotId(),
                 properties.getChatId(),
-                properties.getAskTimeoutSeconds());
+                properties.getAskTimeoutSeconds(),
+                projectRepository.getIfAvailable());
     }
 }

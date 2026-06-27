@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,6 +51,13 @@ public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final ProjectRepository projectRepository;
     private final ChatMemory chatMemory;
+
+    /**
+     * Service de génération de titre (E2-M5). Injecté via {@link ObjectProvider}
+     * pour rester optionnel : absent en test ou si le LLM n'est pas configuré,
+     * le titre reste simplement null sans bloquer les autres fonctionnalités.
+     */
+    private final ObjectProvider<ConversationTitleService> titleServiceProvider;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Création
@@ -161,6 +169,12 @@ public class ConversationService {
 
         if (first) {
             log.info("Premier message soumis — conversationId={}", conversationId);
+            // E2-M5 : déclencher la génération de titre de façon asynchrone (@Async, non-bloquant)
+            ConversationTitleService titleService = titleServiceProvider.getIfAvailable();
+            if (titleService != null) {
+                titleService.generateTitle(conversationId, content);
+                log.debug("Génération de titre déclenchée — conversationId={}", conversationId);
+            }
         } else {
             log.info("Message soumis — conversationId={}, total messages={}",
                     conversationId, existing.size() + 1);

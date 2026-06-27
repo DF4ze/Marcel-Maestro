@@ -47,6 +47,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
  * Autoconfiguration du noyau Marcel Maestro.
@@ -56,8 +57,20 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  *
  * <p>L'AgentLoop n'est cree que si un ChatClient est present : sans provider
  * LLM, la boucle n'est pas cablee et le demarrage reste vert.</p>
+ *
+ * <p><strong>Pourquoi {@code @EnableAsync} ici ?</strong><br>
+ * Le starter gère déjà toute l'infrastructure d'exécution asynchrone :
+ * virtual threads ({@code spring.threads.virtual.enabled=true}, E2-M1),
+ * executor threadpool, et dispatching. Placer {@code @EnableAsync} dans
+ * l'auto-configuration du starter garantit que toute application utilisant
+ * {@code mm-spring-boot-starter} bénéficie du support {@code @Async} sans
+ * configuration supplémentaire (ex : {@code ConversationTitleService}, E2-M5).
+ * Un {@code @Bean Executor} déclaré dans l'application remplace l'executor
+ * par défaut (via {@code @Primary}) — c'est ce que fait {@code SyncAsyncTestConfiguration}
+ * dans les tests pour rendre {@code @Async} synchrone.</p>
  */
 @AutoConfiguration
+@EnableAsync
 @EnableJpaRepositories(basePackages = "fr.ses10doigts.mm.starter")
 @EntityScan(basePackages = "fr.ses10doigts.mm.starter")
 @EnableConfigurationProperties({JournalProperties.class, HitlChannelProperties.class})

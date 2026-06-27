@@ -89,7 +89,7 @@ class HitlGuardTest {
 
     @Test
     void allowSession_cacheNeRedemandePas() {
-        var mock = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_SESSION);
+        var mock = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_LARGE_SESSION);
         ConsentCache cache = new ConsentCache();
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), cache, mock);
 
@@ -101,7 +101,7 @@ class HitlGuardTest {
         // Deuxième appel → cache, pas de demande
         HitlVerdict v2 = guard.check("deploy", null, RiskLevel.HIGH, null, CTX);
         assertTrue(v2.allowed());
-        assertEquals(ConsentDecision.ALLOW_SESSION, v2.decision());
+        assertEquals(ConsentDecision.ALLOW_LARGE_SESSION, v2.decision());
         assertEquals(1, mock.requests().size(), "pas de deuxième appel à ask()");
     }
 
@@ -119,33 +119,33 @@ class HitlGuardTest {
 
     @Test
     void allowProject_cacheComeSession_coutureEtape5() {
-        var mock = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_PROJECT);
+        var mock = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_LARGE_PROJECT);
         ConsentCache cache = new ConsentCache();
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), cache, mock);
 
         guard.check("deploy", null, RiskLevel.CRITICAL, null, CTX);
         guard.check("deploy", null, RiskLevel.CRITICAL, null, CTX);
 
-        assertEquals(1, mock.requests().size(), "ALLOW_PROJECT caché comme session");
-        assertEquals(ConsentDecision.ALLOW_PROJECT, cache.lookup("deploy").orElse(null));
+        assertEquals(1, mock.requests().size(), "ALLOW_LARGE_PROJECT caché comme session");
+        assertEquals(ConsentDecision.ALLOW_LARGE_PROJECT, cache.lookup("deploy").orElse(null));
     }
 
     @Test
     void allowAlways_cacheComeSession_coutureEtape5() {
-        var mock = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_ALWAYS);
+        var mock = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_LARGE_ALWAYS);
         ConsentCache cache = new ConsentCache();
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), cache, mock);
 
         guard.check("deploy", null, RiskLevel.CRITICAL, null, CTX);
         guard.check("deploy", null, RiskLevel.CRITICAL, null, CTX);
 
-        assertEquals(1, mock.requests().size(), "ALLOW_ALWAYS caché comme session");
+        assertEquals(1, mock.requests().size(), "ALLOW_LARGE_ALWAYS caché comme session");
     }
 
     @Test
     void outilsDifferents_demandeSeparee() {
         var mock = new ScriptedHumanInteraction()
-                .respond(ConsentDecision.ALLOW_SESSION, ConsentDecision.ALLOW_SESSION);
+                .respond(ConsentDecision.ALLOW_LARGE_SESSION, ConsentDecision.ALLOW_LARGE_SESSION);
         HitlGuard guard = new HitlGuard(HitlPolicy.defaults(), new ConsentCache(), mock);
 
         guard.check("deploy", null, RiskLevel.HIGH, null, CTX);

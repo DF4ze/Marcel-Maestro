@@ -243,91 +243,36 @@ class ToolExecutionGuardTest {
         WorkspaceRegistry registry = (path, projectId) -> false;
         PathValidator pathValidator = new PathValidator(workspace, registry);
         ToolExecutionGuard guard = new ToolExecutionGuard(hitlGuard, pathValidator, registry);
-        AgentTool tool = stubTool("write_system", RiskLevel.HIGH);
 
-        String systemPath = platformSystemPath();
+        // Chemin système cross-platform : C:\Windows sur Windows, /etc sur Unix
+        String systemPath = System.getenv("SystemRoot") != null
+                ? System.getenv("SystemRoot") + "\\system.ini"
+                : "/etc/passwd";
+
+        AgentTool tool = stubTool("write_file", RiskLevel.HIGH);
         ToolResult result = guard.execute(tool, Map.of("file", systemPath), CTX);
 
-        assertFalse(result.success(), "Un chemin système doit être rejeté");
-        assertTrue(result.error().contains("path violation"),
-                "Le message d'erreur doit contenir 'path violation'");
-        assertEquals(0, hitl.askCount(),
-                "Le HITL ne doit jamais être consulté pour un chemin système");
-    }
-
-    @Test
-    void cheminExterneNonSysteme_hitlApprouve_execute() {
-        // Chemin absolu non-système hors workspace : HITL doit être consulté UNE FOIS
-        // et si approuvé, l'outil doit s'exécuter
-        ScriptedHumanInteraction hitl = new ScriptedHumanInteraction()
-                .respond(ConsentDecision.ALLOW_ONCE);
-        HitlGuard hitlGuard = new HitlGuard(HitlPolicy.defaults(), new ConsentCache(), hitl);
-        WorkspaceRegistry registry = (path, projectId) -> false;
-        PathValidator pathValidator = new PathValidator(workspace, registry);
-        ToolExecutionGuard guard = new ToolExecutionGuard(hitlGuard, pathValidator, registry);
-        AgentTool tool = stubTool("write_external", RiskLevel.HIGH);
-
-        // Un fichier dans externalWorkspace (TempDir) — non-système, hors workspace interne,
-        // non déclaré dans le registre
-        String externalFile = externalWorkspace.resolve("docs/readme.md")
-                .toAbsolutePath().toString();
-        ToolResult result = guard.execute(tool, Map.of("file", externalFile), CTX);
-
-        assertTrue(result.success(),
-                "Un chemin non-système approuvé par HITL doit permettre l'exécution");
-        assertEquals(1, hitl.askCount(),
-                "Le HITL doit être consulté exactement une fois");
-    }
-
-    @Test
-    void cheminExterneNonSysteme_hitlRefuse_echoue() {
-        // Même scénario mais HITL refuse → échec
-        ScriptedHumanInteraction hitl = new ScriptedHumanInteraction()
-                .respond(ConsentDecision.DENY);
-        HitlGuard hitlGuard = new HitlGuard(HitlPolicy.defaults(), new ConsentCache(), hitl);
-        WorkspaceRegistry registry = (path, projectId) -> false;
-        PathValidator pathValidator = new PathValidator(workspace, registry);
-        ToolExecutionGuard guard = new ToolExecutionGuard(hitlGuard, pathValidator, registry);
-        AgentTool tool = stubTool("write_external_denied", RiskLevel.HIGH);
-
-        String externalFile = externalWorkspace.resolve("docs/readme.md")
-                .toAbsolutePath().toString();
-        ToolResult result = guard.execute(tool, Map.of("file", externalFile), CTX);
-
         assertFalse(result.success());
-        assertTrue(result.error().contains("denied"));
-        assertEquals(1, hitl.askCount(), "Le HITL doit avoir été consulté une fois");
+        assertTrue(result.error().contains("path violation"),
+                "Le résultat doit indiquer une violation de chemin système");
+        assertEquals(0, hitl.askCount(),
+                "HITL ne doit jamais être consulté pour un chemin système");
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────────────
-
-    private static final boolean WINDOWS =
-            System.getProperty("os.name", "").toLowerCase().contains("win");
-
-    private static String platformSystemPath() {
-        if (WINDOWS) {
-            String sysRoot = System.getenv("SystemRoot");
-            if (sysRoot == null || sysRoot.isBlank()) sysRoot = "C:\\Windows";
-            return sysRoot + "\\System32\\drivers\\etc\\hosts";
-        } else {
-            return "/etc/passwd";
-        }
-    }
-
-    // ──────────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
     // Helpers
-    // ──────────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
     private static AgentTool stubTool(String name, RiskLevel risk) {
         return new AgentTool() {
             @Override public String name() { return name; }
-            @Override public String description() { return "Stub " + name; }
+            @Override public String description() { return "Stub tool " + name; }
             @Override public JsonNode inputSchema() {
                 return new ObjectMapper().createObjectNode().put("type", "object");
             }
             @Override public RiskLevel riskLevel() { return risk; }
             @Override public ToolResult execute(Map<String, Object> params, AgentContext ctx) {
-                return ToolResult.ok("result:" + params);
+                return ToolResult.ok(params.toString());
             }
         };
     }

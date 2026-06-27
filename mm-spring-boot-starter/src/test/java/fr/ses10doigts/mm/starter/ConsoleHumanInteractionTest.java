@@ -38,12 +38,12 @@ class ConsoleHumanInteractionTest {
 
     @Test
     void ask_allowSession() {
-        var console = withInput("allow_session"); // case insensitive
+        var console = withInput("allow_large_session"); // case insensitive — nom complet de l'enum
 
         ConsentDecision decision = console.ask(
                 new HitlRequest("Exécuter deploy ?", RiskLevel.HIGH, CTX));
 
-        assertEquals(ConsentDecision.ALLOW_SESSION, decision);
+        assertEquals(ConsentDecision.ALLOW_LARGE_SESSION, decision);
     }
 
     @Test
@@ -58,12 +58,12 @@ class ConsoleHumanInteractionTest {
 
     @Test
     void ask_entreeInvalidePuisValide_boucle() {
-        var console = withInput("nimportequoi", "ALLOW_ALWAYS");
+        var console = withInput("nimportequoi", "XA");
 
         ConsentDecision decision = console.ask(
                 new HitlRequest("Exécuter deploy ?", RiskLevel.CRITICAL, CTX));
 
-        assertEquals(ConsentDecision.ALLOW_ALWAYS, decision);
+        assertEquals(ConsentDecision.ALLOW_LARGE_ALWAYS, decision);
     }
 
     @Test

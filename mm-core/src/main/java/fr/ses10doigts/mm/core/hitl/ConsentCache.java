@@ -7,19 +7,16 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Cache de consentement HITL en mémoire (étape 4, livrable 3 ; ADR-005).
  *
- * <p>Stocke les décisions de consentement par nom d'outil pour la durée de la session.
- * Règles de mise en cache :</p>
+ * <p>Stocke les décisions de consentement par clé composite (toolName + scope) pour la
+ * durée de la session. Règles de mise en cache :</p>
  * <ul>
- *   <li>{@link ConsentDecision#ALLOW_ONCE} — <strong>jamais</strong> caché (redemandé à
- *       chaque appel)</li>
- *   <li>{@link ConsentDecision#ALLOW_SESSION} — caché pour la session courante</li>
- *   <li>{@link ConsentDecision#ALLOW_PROJECT} — caché <strong>comme session</strong>
- *       (couture pour la persistance étape 5, {@code FactStore})</li>
- *   <li>{@link ConsentDecision#ALLOW_ALWAYS} — caché <strong>comme session</strong>
- *       (idem, persistance étape 5)</li>
- *   <li>{@link ConsentDecision#DENY} — <strong>jamais</strong> caché (l'humain peut
- *       changer d'avis au prochain appel)</li>
+ *   <li>{@link ConsentDecision#ALLOW_ONCE} et {@link ConsentDecision#DENY} —
+ *       <strong>jamais</strong> cachés.</li>
+ *   <li>Toutes les autres décisions (9 combinaisons scope × persistance) — cachées.</li>
  * </ul>
+ * <p>La clé de cache est construite par {@link fr.ses10doigts.mm.core.hitl.HitlGuard} :
+ * {@code toolName} pour le scope large, {@code toolName::local::<dir>} pour le scope
+ * local, {@code toolName::strict::<path>} pour le scope strict.</p>
  *
  * <p>Thread-safe ({@link ConcurrentHashMap}). Pur noyau.</p>
  */
@@ -39,7 +36,10 @@ public class ConsentCache {
             return;
         }
         switch (decision) {
-            case ALLOW_SESSION, ALLOW_PROJECT, ALLOW_ALWAYS -> cache.put(toolName, decision);
+            case ALLOW_STRICT_SESSION, ALLOW_STRICT_PROJECT, ALLOW_STRICT_ALWAYS,
+                 ALLOW_LOCAL_SESSION,  ALLOW_LOCAL_PROJECT,  ALLOW_LOCAL_ALWAYS,
+                 ALLOW_LARGE_SESSION,  ALLOW_LARGE_PROJECT,  ALLOW_LARGE_ALWAYS
+                    -> cache.put(toolName, decision);
             case ALLOW_ONCE, DENY -> { /* pas de mise en cache */ }
         }
     }

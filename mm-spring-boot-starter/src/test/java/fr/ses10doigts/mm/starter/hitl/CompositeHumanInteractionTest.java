@@ -66,13 +66,13 @@ class CompositeHumanInteractionTest {
     @Test
     void askSingleChannelPassthrough() {
         List<String> log = Collections.synchronizedList(new ArrayList<>());
-        HumanInteraction ch1 = new StubChannel("ch1", log, ConsentDecision.ALLOW_SESSION);
+        HumanInteraction ch1 = new StubChannel("ch1", log, ConsentDecision.ALLOW_LARGE_SESSION);
 
         CompositeHumanInteraction composite = new CompositeHumanInteraction(
                 List.of(ch1), "race");
 
         ConsentDecision result = composite.ask(REQUEST);
-        assertEquals(ConsentDecision.ALLOW_SESSION, result);
+        assertEquals(ConsentDecision.ALLOW_LARGE_SESSION, result);
     }
 
     @Test
@@ -114,14 +114,14 @@ class CompositeHumanInteractionTest {
     @Test
     void askNamedChannelMode() {
         List<String> log = Collections.synchronizedList(new ArrayList<>());
-        HumanInteraction console = new ConsoleStubChannel(log, ConsentDecision.ALLOW_PROJECT);
+        HumanInteraction console = new ConsoleStubChannel(log, ConsentDecision.ALLOW_LARGE_PROJECT);
         HumanInteraction telegram = new TelegramStubChannel(log, ConsentDecision.DENY);
 
         CompositeHumanInteraction composite = new CompositeHumanInteraction(
                 List.of(console, telegram), "console");
 
         ConsentDecision result = composite.ask(REQUEST);
-        assertEquals(ConsentDecision.ALLOW_PROJECT, result);
+        assertEquals(ConsentDecision.ALLOW_LARGE_PROJECT, result);
     }
 
     // ── Stubs ─────────────────────────────────────────────────────────────

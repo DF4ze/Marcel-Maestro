@@ -71,12 +71,12 @@ class PersistentConsentCacheTest {
     @Test
     @DisplayName("ALLOW_ALWAYS est persisté avec scope 'global'")
     void allowAlwaysPersiste_avecScopeGlobal() {
-        consentCache.record("build", ConsentDecision.ALLOW_ALWAYS);
+        consentCache.record("build", ConsentDecision.ALLOW_LARGE_ALWAYS);
 
         Optional<MemoryEntryEntity> entity =
                 repository.findByEntryKeyAndTenant("hitl:consent:build", "default");
         assertThat(entity).isPresent();
-        assertThat(entity.get().getValue()).isEqualTo("ALLOW_ALWAYS");
+        assertThat(entity.get().getValue()).isEqualTo("ALLOW_LARGE_ALWAYS");
         assertThat(entity.get().getScope()).isEqualTo("global");
     }
 
@@ -89,12 +89,12 @@ class PersistentConsentCacheTest {
     void allowProject_avecProjectIdValide_scopeCorrectEnDB() {
         contextHolder.bind(AgentContext.of("default", "projet-alpha", "conv-1", "task-1"));
 
-        consentCache.record("deploy", ConsentDecision.ALLOW_PROJECT);
+        consentCache.record("deploy", ConsentDecision.ALLOW_LARGE_PROJECT);
 
         Optional<MemoryEntryEntity> entity =
                 repository.findByEntryKeyAndTenant("hitl:consent:deploy", "default");
         assertThat(entity).isPresent();
-        assertThat(entity.get().getValue()).isEqualTo("ALLOW_PROJECT");
+        assertThat(entity.get().getValue()).isEqualTo("ALLOW_LARGE_PROJECT");
         assertThat(entity.get().getScope()).isEqualTo("project:projet-alpha");
     }
 
@@ -103,9 +103,9 @@ class PersistentConsentCacheTest {
     void allowProject_sansContexte_leveException() {
         // Aucun bind() sur le holder → projectId null
 
-        assertThatThrownBy(() -> consentCache.record("deploy", ConsentDecision.ALLOW_PROJECT))
+        assertThatThrownBy(() -> consentCache.record("deploy", ConsentDecision.ALLOW_LARGE_PROJECT))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("ALLOW_PROJECT requiert un projectId");
+                .hasMessageContaining("*_PROJECT requiert un projectId");
 
         // Rien ne doit être persisté
         assertThat(repository.findByEntryKeyAndTenant("hitl:consent:deploy", "default")).isEmpty();
@@ -116,9 +116,9 @@ class PersistentConsentCacheTest {
     void allowProject_avecProjectIdNullExplicite_leveException() {
         contextHolder.bind(AgentContext.of("default", null, "conv-1", "task-1"));
 
-        assertThatThrownBy(() -> consentCache.record("deploy", ConsentDecision.ALLOW_PROJECT))
+        assertThatThrownBy(() -> consentCache.record("deploy", ConsentDecision.ALLOW_LARGE_PROJECT))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("ALLOW_PROJECT requiert un projectId");
+                .hasMessageContaining("*_PROJECT requiert un projectId");
     }
 
     @Test
@@ -126,9 +126,9 @@ class PersistentConsentCacheTest {
     void allowProject_avecProjectIdVide_leveException() {
         contextHolder.bind(AgentContext.of("default", "  ", "conv-1", "task-1"));
 
-        assertThatThrownBy(() -> consentCache.record("deploy", ConsentDecision.ALLOW_PROJECT))
+        assertThatThrownBy(() -> consentCache.record("deploy", ConsentDecision.ALLOW_LARGE_PROJECT))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("ALLOW_PROJECT requiert un projectId");
+                .hasMessageContaining("*_PROJECT requiert un projectId");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -138,12 +138,12 @@ class PersistentConsentCacheTest {
     @Test
     @DisplayName("ALLOW_SESSION n'est PAS persisté (mémoire seule)")
     void allowSessionNonPersiste() {
-        consentCache.record("read_file", ConsentDecision.ALLOW_SESSION);
+        consentCache.record("read_file", ConsentDecision.ALLOW_LARGE_SESSION);
 
         assertThat(repository.findByEntryKeyAndTenant("hitl:consent:read_file", "default")).isEmpty();
         // Mais bien présent en cache mémoire
         assertThat(consentCache.lookup("read_file"))
-                .isPresent().contains(ConsentDecision.ALLOW_SESSION);
+                .isPresent().contains(ConsentDecision.ALLOW_LARGE_SESSION);
     }
 
     @Test
@@ -167,12 +167,12 @@ class PersistentConsentCacheTest {
     void rechargement_isolationProjetA_ProjetB() {
         // Persistance projet A
         contextHolder.bind(AgentContext.of("default", "projet-a", "conv-a", "task-1"));
-        consentCache.record("build", ConsentDecision.ALLOW_PROJECT);
+        consentCache.record("build", ConsentDecision.ALLOW_LARGE_PROJECT);
         contextHolder.clear();
 
         // Persistance projet B
         contextHolder.bind(AgentContext.of("default", "projet-b", "conv-b", "task-2"));
-        consentCache.record("deploy", ConsentDecision.ALLOW_PROJECT);
+        consentCache.record("deploy", ConsentDecision.ALLOW_LARGE_PROJECT);
         contextHolder.clear();
 
         // Nouveau cache vierge — simule un redémarrage
@@ -184,7 +184,7 @@ class PersistentConsentCacheTest {
 
         assertThat(loaded).isEqualTo(1);
         assertThat(freshCache.lookup("build"))
-                .isPresent().contains(ConsentDecision.ALLOW_PROJECT); // projet A ✓
+                .isPresent().contains(ConsentDecision.ALLOW_LARGE_PROJECT); // projet A ✓
         assertThat(freshCache.lookup("deploy")).isEmpty();              // projet B absent ✓
     }
 
@@ -193,7 +193,7 @@ class PersistentConsentCacheTest {
     void rechargement_isolationProjetB_projetAExclu() {
         // Persistance projet A
         contextHolder.bind(AgentContext.of("default", "projet-a", "conv-a", "task-1"));
-        consentCache.record("build", ConsentDecision.ALLOW_PROJECT);
+        consentCache.record("build", ConsentDecision.ALLOW_LARGE_PROJECT);
         contextHolder.clear();
 
         // Nouveau cache — rechargement pour projet B
@@ -209,7 +209,7 @@ class PersistentConsentCacheTest {
     @DisplayName("ALLOW_ALWAYS (scope global) est rechargé pour tous les projets")
     void allowAlways_rechargePourTousProjets() {
         // Persistance ALLOW_ALWAYS (pas de projectId requis)
-        consentCache.record("monitor", ConsentDecision.ALLOW_ALWAYS);
+        consentCache.record("monitor", ConsentDecision.ALLOW_LARGE_ALWAYS);
 
         // Nouveau cache — rechargement pour projet quelconque
         PersistentConsentCache freshCache =
@@ -218,18 +218,18 @@ class PersistentConsentCacheTest {
 
         assertThat(loaded).isEqualTo(1);
         assertThat(freshCache.lookup("monitor"))
-                .isPresent().contains(ConsentDecision.ALLOW_ALWAYS); // global ✓
+                .isPresent().contains(ConsentDecision.ALLOW_LARGE_ALWAYS); // global ✓
     }
 
     @Test
     @DisplayName("rechargement global seul (null projectId) : ALLOW_ALWAYS oui, ALLOW_PROJECT non")
     void rechargementGlobal_excludeAllowProject() {
         // Persistance ALLOW_ALWAYS
-        consentCache.record("monitor", ConsentDecision.ALLOW_ALWAYS);
+        consentCache.record("monitor", ConsentDecision.ALLOW_LARGE_ALWAYS);
 
         // Persistance ALLOW_PROJECT
         contextHolder.bind(AgentContext.of("default", "projet-x", "conv-x", "task-1"));
-        consentCache.record("build", ConsentDecision.ALLOW_PROJECT);
+        consentCache.record("build", ConsentDecision.ALLOW_LARGE_PROJECT);
         contextHolder.clear();
 
         // Rechargement global (null = démarrage d'app)
@@ -239,7 +239,7 @@ class PersistentConsentCacheTest {
 
         assertThat(loaded).isEqualTo(1);
         assertThat(freshCache.lookup("monitor"))
-                .isPresent().contains(ConsentDecision.ALLOW_ALWAYS);  // global ✓
+                .isPresent().contains(ConsentDecision.ALLOW_LARGE_ALWAYS);  // global ✓
         assertThat(freshCache.lookup("build")).isEmpty();               // projet exclu ✓
     }
 
@@ -252,7 +252,7 @@ class PersistentConsentCacheTest {
     void rechargementApresRedemarrage_isolationProjet() {
         // Écriture initiale — projet A
         contextHolder.bind(AgentContext.of("default", "projet-a", "conv-a", "task-1"));
-        consentCache.record("build", ConsentDecision.ALLOW_PROJECT);
+        consentCache.record("build", ConsentDecision.ALLOW_LARGE_PROJECT);
         contextHolder.clear();
 
         // Simulation redémarrage : nouveau cache vierge
@@ -262,7 +262,7 @@ class PersistentConsentCacheTest {
         // Rechargement pour projet A → présent
         freshCache.loadFromStore("projet-a");
         assertThat(freshCache.lookup("build"))
-                .isPresent().contains(ConsentDecision.ALLOW_PROJECT);
+                .isPresent().contains(ConsentDecision.ALLOW_LARGE_PROJECT);
 
         // Rechargement pour projet B → absent (même cache, add() est idempotent mais filtré)
         PersistentConsentCache cacheB =
@@ -278,7 +278,7 @@ class PersistentConsentCacheTest {
     @Test
     @DisplayName("clearSession vide le cache mémoire mais les consentements restent en DB")
     void clearSessionConserveLaPersistance() {
-        consentCache.record("build", ConsentDecision.ALLOW_ALWAYS);
+        consentCache.record("build", ConsentDecision.ALLOW_LARGE_ALWAYS);
         assertThat(consentCache.lookup("build")).isPresent();
 
         consentCache.clearSession();
@@ -290,6 +290,6 @@ class PersistentConsentCacheTest {
         // Et rechargeable
         ((PersistentConsentCache) consentCache).loadFromStore();
         assertThat(consentCache.lookup("build"))
-                .isPresent().contains(ConsentDecision.ALLOW_ALWAYS);
+                .isPresent().contains(ConsentDecision.ALLOW_LARGE_ALWAYS);
     }
 }

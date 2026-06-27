@@ -20,27 +20,27 @@ class ConsentCacheTest {
     void allowSession_cache() {
         ConsentCache cache = new ConsentCache();
 
-        cache.record("tool_a", ConsentDecision.ALLOW_SESSION);
+        cache.record("tool_a", ConsentDecision.ALLOW_LARGE_SESSION);
 
-        assertEquals(ConsentDecision.ALLOW_SESSION, cache.lookup("tool_a").orElse(null));
+        assertEquals(ConsentDecision.ALLOW_LARGE_SESSION, cache.lookup("tool_a").orElse(null));
     }
 
     @Test
     void allowProject_cacheComeSession() {
         ConsentCache cache = new ConsentCache();
 
-        cache.record("tool_a", ConsentDecision.ALLOW_PROJECT);
+        cache.record("tool_a", ConsentDecision.ALLOW_LARGE_PROJECT);
 
-        assertEquals(ConsentDecision.ALLOW_PROJECT, cache.lookup("tool_a").orElse(null));
+        assertEquals(ConsentDecision.ALLOW_LARGE_PROJECT, cache.lookup("tool_a").orElse(null));
     }
 
     @Test
     void allowAlways_cacheComeSession() {
         ConsentCache cache = new ConsentCache();
 
-        cache.record("tool_a", ConsentDecision.ALLOW_ALWAYS);
+        cache.record("tool_a", ConsentDecision.ALLOW_LARGE_ALWAYS);
 
-        assertEquals(ConsentDecision.ALLOW_ALWAYS, cache.lookup("tool_a").orElse(null));
+        assertEquals(ConsentDecision.ALLOW_LARGE_ALWAYS, cache.lookup("tool_a").orElse(null));
     }
 
     @Test
@@ -55,8 +55,8 @@ class ConsentCacheTest {
     @Test
     void clearSession_videLeTout() {
         ConsentCache cache = new ConsentCache();
-        cache.record("tool_a", ConsentDecision.ALLOW_SESSION);
-        cache.record("tool_b", ConsentDecision.ALLOW_ALWAYS);
+        cache.record("tool_a", ConsentDecision.ALLOW_LARGE_SESSION);
+        cache.record("tool_b", ConsentDecision.ALLOW_LARGE_ALWAYS);
 
         cache.clearSession();
 
@@ -77,7 +77,7 @@ class ConsentCacheTest {
     @Test
     void recordNull_pasDeNPE() {
         ConsentCache cache = new ConsentCache();
-        cache.record(null, ConsentDecision.ALLOW_SESSION);
+        cache.record(null, ConsentDecision.ALLOW_LARGE_SESSION);
         cache.record("tool_a", null);
         assertEquals(0, cache.size());
     }

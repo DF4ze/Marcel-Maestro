@@ -8,37 +8,43 @@ import fr.ses10doigts.mm.core.hitl.ConsentDecision;
 import fr.ses10doigts.mm.core.orchestration.Dispatcher;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
 import fr.ses10doigts.mm.starter.conversation.ConversationEntity;
+import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.telegrambots.model.TelegramUpdateContext;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.CallbackQuery;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.Chat;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.Command;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.TelegramController;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 /**
- * Contrôleur Telegram pour le pilotage de Marcel Maestro (étape 8, livrable 5 / E2-M2).
+ * Contrôleur Telegram pour le pilotage de Marcel Maestro (E2-M5).
  *
- * <p>Gère les commandes {@code /stop} et {@code /status}, ainsi que les callbacks
- * des boutons inline HITL (5 handlers à valeur fixe, un par {@link ConsentDecision}).
- * Le {@link Dispatcher} est injecté via {@link ObjectProvider} car il peut être absent
- * si aucune {@link fr.ses10doigts.mm.core.orchestration.AgentFactory} n'est déclarée.</p>
+ * <p>Gère :</p>
+ * <ul>
+ *   <li>{@code /stop} — arrête une tâche en cours.</li>
+ *   <li>{@code /status} — liste les tâches actives.</li>
+ *   <li>{@code /projects} — liste les projets ACTIVE avec leur nombre de conversations ouvertes (E2-M5).</li>
+ *   <li>{@code /switch <name>} — change le projet actif de la session Telegram (E2-M5).</li>
+ *   <li>Messages libres — soumis au cortex via la {@link TaskQueue}.</li>
+ *   <li>Callbacks HITL (11 handlers).</li>
+ * </ul>
  *
- * <p><strong>E2-M2 — Intégration ConversationService :</strong><br>
- * Si {@code mm.telegram.default-project-id} est configuré, chaque message Telegram
- * démarre une conversation via {@link ConversationService#startConversation(String)},
- * ce qui garantit un {@code conversationId} (UUID) non-null dans l'{@link AgentContext}.
- * Sans cette propriété, le chatId Telegram est utilisé comme fallback (avec un
- * {@code log.warn}). {@code projectId} vaut alors {@code "default"}.</p>
+ * <p><strong>E2-M5 — Session Telegram :</strong><br>
+ * Le projet actif est maintenu par {@link TelegramSessionService} (in-memory,
+ * {@link java.util.concurrent.ConcurrentHashMap ConcurrentHashMap} chatId → projectId).
+ * En l'absence de session active pour un chatId, la stratégie de repli est :
+ * premier projet ACTIVE disponible. Si aucun projet n'existe, un message explicite
+ * est retourné.</p>
  *
- * <p>Le handler {@link #chat(TelegramUpdateContext)} soumet le message de l'utilisateur
- * dans la {@link TaskQueue} comme un {@code USER_REQUEST} destiné au cortex. La réponse
- * est renvoyée de façon asynchrone via {@link TelegramHumanInteraction#notify} quand
- * le Dispatcher clôture la tâche.</p>
+ * <p><strong>E2-M5 — Préfixe [NomProjet] :</strong><br>
+ * Appliqué par {@link TelegramHumanInteraction#notify} — non géré ici.</p>
  */
 @TelegramController
 @ConditionalOnProperty(prefix = "telegram", name = "enabled", havingValue = "true")
@@ -49,49 +55,39 @@ public class TelegramMmController {
     private final ObjectProvider<TelegramHumanInteraction> telegramProvider;
     private final ObjectProvider<ConversationService> conversationServiceProvider;
     private final TaskQueue taskQueue;
-
-    /**
-     * ID du projet par défaut pour les messages Telegram (E2-M2).
-     * Si absent ({@code null}), le chatId Telegram est utilisé comme conversationId fallback.
-     */
-    private final String defaultProjectId;
+    private final TelegramSessionService sessionService;
 
     /**
      * Construit le contrôleur Telegram MM.
      *
      * @param dispatcherProvider          provider du Dispatcher (optionnel)
      * @param telegramProvider            provider du TelegramHumanInteraction (optionnel)
-     * @param conversationServiceProvider provider du ConversationService (optionnel — E2-M2)
-     * @param taskQueue                   file de tâches (toujours présente si le starter est chargé)
-     * @param defaultProjectId            ID du projet par défaut pour les messages Telegram
-     *                                    ({@code mm.telegram.default-project-id}, nullable)
+     * @param conversationServiceProvider provider du ConversationService (optionnel)
+     * @param taskQueue                   file de tâches
+     * @param sessionService              gestionnaire de sessions Telegram (E2-M5)
      */
     public TelegramMmController(
             ObjectProvider<Dispatcher> dispatcherProvider,
             ObjectProvider<TelegramHumanInteraction> telegramProvider,
             ObjectProvider<ConversationService> conversationServiceProvider,
             TaskQueue taskQueue,
-            @Value("${mm.telegram.default-project-id:#{null}}") String defaultProjectId) {
+            TelegramSessionService sessionService) {
         this.dispatcherProvider = dispatcherProvider;
         this.telegramProvider = telegramProvider;
         this.conversationServiceProvider = conversationServiceProvider;
         this.taskQueue = taskQueue;
-        this.defaultProjectId = defaultProjectId;
+        this.sessionService = sessionService;
     }
 
-    // ── Chat ────────────────────────────────────────────────────────
+    // ── Chat ────────────────────────────────────────────────────────────
 
     /**
      * Reçoit un message libre de l'utilisateur, le soumet au cortex via la
      * {@link TaskQueue} et retourne un accusé de réception immédiat.
      *
-     * <p>E2-M2 : si {@code mm.telegram.default-project-id} est configuré et que
-     * {@link ConversationService} est disponible, une {@link ConversationEntity} est
-     * créée en DB — son UUID devient le {@code conversationId} de l'{@link AgentContext}.
-     * Sinon fallback sur le chatId Telegram (log.warn).</p>
-     *
-     * <p>La réponse effective sera poussée de manière asynchrone par
-     * {@link TelegramHumanInteraction#notify} quand le Dispatcher clôture la tâche.</p>
+     * <p>E2-M5 : le projectId est résolu depuis la session active du chatId
+     * (via {@link TelegramSessionService#resolveProjectId}). Si aucun projet
+     * n'est disponible, un message d'erreur est retourné.</p>
      *
      * @param ctx contexte de l'update Telegram
      * @return accusé de réception avec le taskId court
@@ -110,29 +106,32 @@ public class TelegramMmController {
             return "⚠️ Le moteur agent n'est pas démarré (aucune AgentFactory configurée).";
         }
 
-        // ── Résolution projectId + conversationId (E2-M2) ──────────────────
-        String projectId;
+        // ── Résolution projectId via session active (E2-M5) ────────────────
+        Long chatId = ctx.getChatId();
+        Optional<String> resolvedProjectId = sessionService.resolveProjectId(chatId);
+
+        if (resolvedProjectId.isEmpty()) {
+            log.warn("Telegram chat — chatId={} : aucun projet ACTIVE disponible", chatId);
+            return "⚠️ Aucun projet actif disponible. Crée un projet via l'API REST puis réessaie.";
+        }
+
+        String projectId = resolvedProjectId.get();
         String conversationId;
 
         ConversationService conversationService = conversationServiceProvider.getIfAvailable();
-        if (defaultProjectId != null && conversationService != null) {
+        if (conversationService != null) {
             try {
-                ConversationEntity conv = conversationService.startConversation(defaultProjectId);
-                projectId = defaultProjectId;
+                ConversationEntity conv = conversationService.startConversation(projectId);
                 conversationId = conv.getId();
                 log.debug("Telegram chat — conversationId injecté={}, projectId={}", conversationId, projectId);
             } catch (Exception e) {
                 log.warn("Telegram chat — impossible de créer la conversation pour projectId={} : {}. Fallback sur chatId.",
-                        defaultProjectId, e.getMessage());
-                projectId = defaultProjectId;
-                conversationId = ctx.getChatId() != null ? String.valueOf(ctx.getChatId()) : "telegram";
+                        projectId, e.getMessage());
+                conversationId = chatId != null ? String.valueOf(chatId) : "telegram";
             }
         } else {
-            if (defaultProjectId == null) {
-                log.warn("Telegram chat — mm.telegram.default-project-id non configuré. Fallback sur chatId comme conversationId.");
-            }
-            projectId = "default";
-            conversationId = ctx.getChatId() != null ? String.valueOf(ctx.getChatId()) : "telegram";
+            log.warn("Telegram chat — ConversationService absent. Fallback sur chatId comme conversationId.");
+            conversationId = chatId != null ? String.valueOf(chatId) : "telegram";
         }
 
         // ── Soumission TaskMessage ──────────────────────────────────────────
@@ -149,10 +148,10 @@ public class TelegramMmController {
                 taskId, projectId, conversationId, truncate(text, 60));
 
         return String.format("⏳ Message reçu (tâche %s).\nJe traite, tu recevras la réponse dans un instant…",
-                taskId);
+                truncate(taskId, 12));
     }
 
-    // ── Commandes ────────────────────────────────────────────────────────
+    // ── Commandes ────────────────────────────────────────────────────────────
 
     /**
      * Commande {@code /stop <taskId>} — arrête une tâche en cours.
@@ -207,61 +206,150 @@ public class TelegramMmController {
         return sb.toString();
     }
 
-    // ── Callbacks HITL (valeurs fixes, un handler par décision) ──────────
-
     /**
-     * Callback HITL — Une fois.
+     * Commande {@code /projects} — liste les projets ACTIVE avec le nombre de conversations ouvertes.
+     *
+     * <p>Format de sortie Telegram Markdown :</p>
+     * <pre>
+     * 📂 *Projets actifs*
+     * • *Mon Projet* — 3 conversations ouvertes
+     * • *Autre Projet* — 1 conversation ouverte
+     * </pre>
      *
      * @param ctx contexte de l'update Telegram
-     * @return message de confirmation
+     * @return liste Markdown des projets actifs
      */
+    @Command(value = "/projects", description = "Lister les projets actifs")
+    public String projects(TelegramUpdateContext ctx) {
+        log.info("Telegram /projects — chatId={}", ctx.getChatId());
+
+        List<ProjectEntity> activeProjects = sessionService.listActiveProjects();
+
+        if (activeProjects.isEmpty()) {
+            return "Aucun projet actif. Crée un projet via l'API REST.";
+        }
+
+        // Batch : une seule requête SQL pour tous les projets (anti N+1)
+        List<String> projectIds = activeProjects.stream().map(ProjectEntity::getId).toList();
+        Map<String, Long> openCountByProject = sessionService.countOpenConversationsByProjects(projectIds);
+
+        StringBuilder sb = new StringBuilder("📂 *Projets actifs*\n");
+        for (ProjectEntity project : activeProjects) {
+            long openConvCount = openCountByProject.getOrDefault(project.getId(), 0L);
+            String convLabel = openConvCount == 1 ? "1 conversation ouverte" :
+                    openConvCount + " conversations ouvertes";
+            sb.append("• *").append(project.getName()).append("* — ").append(convLabel).append("\n");
+        }
+
+        // Indiquer le projet actif de la session
+        Optional<String> activeProjectId = sessionService.getActiveProjectId(ctx.getChatId());
+        if (activeProjectId.isPresent()) {
+            activeProjects.stream()
+                    .filter(p -> p.getId().equals(activeProjectId.get()))
+                    .findFirst()
+                    .ifPresent(p -> sb.append("\n_Projet actif : ").append(p.getName()).append("_"));
+        }
+
+        return sb.toString();
+    }
+
+    /**
+     * Commande {@code /switch <name>} — change le projet actif de la session Telegram.
+     *
+     * <p>La recherche est insensible à la casse sur le nom ou le slug du projet.
+     * Le projet doit être ACTIVE. Log.info enregistre le switch (coding rules).</p>
+     *
+     * @param ctx contexte de l'update Telegram
+     * @return confirmation du switch ou message d'erreur
+     */
+    @Command(value = "/switch", description = "Changer de projet actif : /switch <nom>")
+    public String switchProject(TelegramUpdateContext ctx) {
+        if (ctx.getArgs() == null || ctx.getArgs().isEmpty()) {
+            return "Usage : /switch <nom du projet>";
+        }
+
+        String nameArg = String.join(" ", ctx.getArgs());
+        Long chatId = ctx.getChatId();
+
+        Optional<ProjectEntity> found = sessionService.findActiveProjectByName(nameArg);
+
+        if (found.isEmpty()) {
+            log.info("Telegram /switch — chatId={}, projet '{}' introuvable ou non ACTIVE", chatId, nameArg);
+            return String.format("❓ Projet '%s' introuvable ou non actif.\nUtilise /projects pour voir les projets disponibles.", nameArg);
+        }
+
+        ProjectEntity project = found.get();
+        sessionService.setActiveProject(chatId, project.getId(), project.getName());
+
+        long openConvCount = sessionService.countOpenConversations(project.getId());
+        String convLabel = openConvCount == 1 ? "1 conversation ouverte" :
+                openConvCount + " conversations ouvertes";
+
+        return String.format("✅ Projet actif : *%s*\n%s", project.getName(), convLabel);
+    }
+
+    // ── Callbacks HITL ───────────────────────────────────────────────────────
+    // 11 handlers : 1 (une fois) + 9 (3 scopes × 3 persistances) + 1 (refus)
+
     @CallbackQuery(TelegramHumanInteraction.CB_ALLOW_ONCE)
     public String onAllowOnce(TelegramUpdateContext ctx) {
         return resolveHitl(ConsentDecision.ALLOW_ONCE);
     }
 
-    /**
-     * Callback HITL — Session.
-     *
-     * @param ctx contexte de l'update Telegram
-     * @return message de confirmation
-     */
-    @CallbackQuery(TelegramHumanInteraction.CB_ALLOW_SESSION)
-    public String onAllowSession(TelegramUpdateContext ctx) {
-        return resolveHitl(ConsentDecision.ALLOW_SESSION);
-    }
-
-    /**
-     * Callback HITL — Projet.
-     *
-     * @param ctx contexte de l'update Telegram
-     * @return message de confirmation
-     */
-    @CallbackQuery(TelegramHumanInteraction.CB_ALLOW_PROJECT)
-    public String onAllowProject(TelegramUpdateContext ctx) {
-        return resolveHitl(ConsentDecision.ALLOW_PROJECT);
-    }
-
-    /**
-     * Callback HITL — Toujours.
-     *
-     * @param ctx contexte de l'update Telegram
-     * @return message de confirmation
-     */
-    @CallbackQuery(TelegramHumanInteraction.CB_ALLOW_ALWAYS)
-    public String onAllowAlways(TelegramUpdateContext ctx) {
-        return resolveHitl(ConsentDecision.ALLOW_ALWAYS);
-    }
-
-    /**
-     * Callback HITL — Refuser.
-     *
-     * @param ctx contexte de l'update Telegram
-     * @return message de confirmation
-     */
     @CallbackQuery(TelegramHumanInteraction.CB_DENY)
     public String onDeny(TelegramUpdateContext ctx) {
         return resolveHitl(ConsentDecision.DENY);
+    }
+
+    // ── Stricte ──────────────────────────────────────────────────────────────
+
+    @CallbackQuery(TelegramHumanInteraction.CB_STRICT_SESSION)
+    public String onStrictSession(TelegramUpdateContext ctx) {
+        return resolveHitl(ConsentDecision.ALLOW_STRICT_SESSION);
+    }
+
+    @CallbackQuery(TelegramHumanInteraction.CB_STRICT_PROJECT)
+    public String onStrictProject(TelegramUpdateContext ctx) {
+        return resolveHitl(ConsentDecision.ALLOW_STRICT_PROJECT);
+    }
+
+    @CallbackQuery(TelegramHumanInteraction.CB_STRICT_ALWAYS)
+    public String onStrictAlways(TelegramUpdateContext ctx) {
+        return resolveHitl(ConsentDecision.ALLOW_STRICT_ALWAYS);
+    }
+
+    // ── Local ─────────────────────────────────────────────────────────────────
+
+    @CallbackQuery(TelegramHumanInteraction.CB_LOCAL_SESSION)
+    public String onLocalSession(TelegramUpdateContext ctx) {
+        return resolveHitl(ConsentDecision.ALLOW_LOCAL_SESSION);
+    }
+
+    @CallbackQuery(TelegramHumanInteraction.CB_LOCAL_PROJECT)
+    public String onLocalProject(TelegramUpdateContext ctx) {
+        return resolveHitl(ConsentDecision.ALLOW_LOCAL_PROJECT);
+    }
+
+    @CallbackQuery(TelegramHumanInteraction.CB_LOCAL_ALWAYS)
+    public String onLocalAlways(TelegramUpdateContext ctx) {
+        return resolveHitl(ConsentDecision.ALLOW_LOCAL_ALWAYS);
+    }
+
+    // ── Large ─────────────────────────────────────────────────────────────────
+
+    @CallbackQuery(TelegramHumanInteraction.CB_LARGE_SESSION)
+    public String onLargeSession(TelegramUpdateContext ctx) {
+        return resolveHitl(ConsentDecision.ALLOW_LARGE_SESSION);
+    }
+
+    @CallbackQuery(TelegramHumanInteraction.CB_LARGE_PROJECT)
+    public String onLargeProject(TelegramUpdateContext ctx) {
+        return resolveHitl(ConsentDecision.ALLOW_LARGE_PROJECT);
+    }
+
+    @CallbackQuery(TelegramHumanInteraction.CB_LARGE_ALWAYS)
+    public String onLargeAlways(TelegramUpdateContext ctx) {
+        return resolveHitl(ConsentDecision.ALLOW_LARGE_ALWAYS);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

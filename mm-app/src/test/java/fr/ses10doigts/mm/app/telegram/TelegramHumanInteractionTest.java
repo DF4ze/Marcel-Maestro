@@ -40,7 +40,7 @@ class TelegramHumanInteractionTest {
         doNothing().when(sender).sendMessage(anyString(), anyLong(), anyString());
         doNothing().when(sender).sendView(anyString(), anyLong(), any(TelegramView.class));
 
-        telegram = new TelegramHumanInteraction(sender, "mm-bot", 12345L, 5);
+        telegram = new TelegramHumanInteraction(sender, "mm-bot", 12345L, 5, null);
     }
 
     @Test
@@ -69,11 +69,11 @@ class TelegramHumanInteractionTest {
         verify(sender).sendView(anyString(), anyLong(), any(TelegramView.class));
 
         // Simuler le callback utilisateur
-        boolean resolved = telegram.resolveAsk(ConsentDecision.ALLOW_SESSION);
+        boolean resolved = telegram.resolveAsk(ConsentDecision.ALLOW_LARGE_SESSION);
         assertTrue(resolved, "La demande doit être résolue");
 
         ConsentDecision decision = result.get(2, TimeUnit.SECONDS);
-        assertEquals(ConsentDecision.ALLOW_SESSION, decision);
+        assertEquals(ConsentDecision.ALLOW_LARGE_SESSION, decision);
     }
 
     @Test
@@ -81,7 +81,7 @@ class TelegramHumanInteractionTest {
         // Timeout = 5s, mais on ne résout jamais → la config du test a 5s timeout
         // Pour accélérer le test, on crée une instance avec un timeout très court
         TelegramHumanInteraction shortTimeout = new TelegramHumanInteraction(
-                sender, "mm-bot", 12345L, 1);
+                sender, "mm-bot", 12345L, 1, null);
 
         HitlRequest request = new HitlRequest("Timeout test", RiskLevel.MEDIUM, CTX);
         ConsentDecision decision = shortTimeout.ask(request);

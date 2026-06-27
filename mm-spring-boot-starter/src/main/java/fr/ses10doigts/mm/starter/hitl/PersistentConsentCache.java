@@ -73,24 +73,23 @@ public class PersistentConsentCache extends ConsentCache {
     public void record(String toolName, ConsentDecision decision) {
         super.record(toolName, decision);
 
-        if (decision == ConsentDecision.ALLOW_PROJECT) {
-            String projectId = contextHolder.projectId();
-            log.debug("ALLOW_PROJECT — validation projectId='{}'", projectId);
-
-            if (projectId == null || projectId.isBlank()) {
-                throw new IllegalStateException(
-                        "ALLOW_PROJECT requiert un projectId — contexte projet non initialisé");
+        switch (decision) {
+            case ALLOW_STRICT_PROJECT, ALLOW_LOCAL_PROJECT, ALLOW_LARGE_PROJECT -> {
+                String projectId = contextHolder.projectId();
+                log.debug("*_PROJECT — validation projectId='{}'", projectId);
+                if (projectId == null || projectId.isBlank()) {
+                    throw new IllegalStateException(
+                            "*_PROJECT requiert un projectId — contexte projet non initialisé");
+                }
+                persistConsent(toolName, decision, projectScope(projectId));
+                log.info("Consentement *_PROJECT persisté — clé='{}', projectId='{}'",
+                        toolName, projectId);
             }
-
-            String scope = projectScope(projectId);
-            log.debug("Scope ALLOW_PROJECT — clé construite : '{}'", scope);
-            persistConsent(toolName, decision, scope);
-            log.info("Consentement ALLOW_PROJECT enregistré — outil='{}', projectId='{}'",
-                    toolName, projectId);
-
-        } else if (decision == ConsentDecision.ALLOW_ALWAYS) {
-            persistConsent(toolName, decision, SCOPE_GLOBAL);
-            log.info("Consentement ALLOW_ALWAYS enregistré — outil='{}', scope=global", toolName);
+            case ALLOW_STRICT_ALWAYS, ALLOW_LOCAL_ALWAYS, ALLOW_LARGE_ALWAYS -> {
+                persistConsent(toolName, decision, SCOPE_GLOBAL);
+                log.info("Consentement *_ALWAYS persisté — clé='{}', scope=global", toolName);
+            }
+            default -> { /* SESSION, ONCE, DENY : pas de persistance */ }
         }
     }
 

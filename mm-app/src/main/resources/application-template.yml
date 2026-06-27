@@ -93,6 +93,14 @@ mm:
   hitl:
     primary-channel: race
 
+  # E2-M5 — Génération de titre de conversation par LLM (asynchrone, ADR-025).
+  # Le même ChatClient que Cortex est utilisé — aucune double configuration LLM.
+  # prompt : texte envoyé au LLM avant le premier message de la conversation.
+  # Laisser vide pour utiliser le prompt par défaut.
+  conversation:
+    title:
+      prompt: "Génère un titre court (5 mots maximum) pour une conversation démarrée par ce message. Réponds uniquement avec le titre, sans ponctuation finale ni guillemets. Message : "
+
   # Côté MM : destinataire et identifiant logique du bot.
   telegram:
     bot-id: mm-bot
