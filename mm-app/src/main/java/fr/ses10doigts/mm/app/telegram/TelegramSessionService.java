@@ -109,7 +109,7 @@ public class TelegramSessionService {
         // Repli : premier projet ACTIVE
         List<ProjectEntity> activeProjects = projectRepository.findAllByStatus(ProjectStatus.ACTIVE);
         if (!activeProjects.isEmpty()) {
-            String fallbackId = activeProjects.get(0).getId();
+            String fallbackId = activeProjects.getFirst().getId();
             log.debug("Session Telegram — chatId={} sans session active, repli sur projectId={}",
                     chatId, fallbackId);
             return Optional.of(fallbackId);

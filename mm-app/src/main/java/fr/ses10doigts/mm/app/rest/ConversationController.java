@@ -35,7 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <tr><td>GET</td><td>/projects/{projectId}/conversations</td><td>Liste les conversations</td></tr>
  *   <tr><td>GET</td><td>/projects/{projectId}/conversations/{id}</td><td>Détail d'une conversation</td></tr>
  *   <tr><td>GET</td><td>/projects/{projectId}/conversations/{id}/messages</td><td>Messages en mémoire</td></tr>
- *   <tr><td>POST</td><td>/projects/{projectId}/conversations/{id}/messages</td><td>Ajoute un message</td></tr>
+ *   <tr><td>POST</td><td>/projects/{projectId}/conversations/{id}/messages</td><td>Envoie un message et retourne la réponse Marcel</td></tr>
  * </table>
  */
 @RestController
@@ -118,12 +118,12 @@ public class ConversationController {
     }
 
     /**
-     * Ajoute un message utilisateur dans la mémoire JDBC d'une conversation.
+     * Envoie un message utilisateur à Marcel et retourne la réponse assistant.
      *
      * @param projectId      l'ID du projet
      * @param conversationId l'ID de la conversation
      * @param request        corps JSON {@code {"content": "..."}}
-     * @return 201 Created si ajouté, 400 si contenu vide, 404 si conversation introuvable
+     * @return 200 OK avec la réponse assistant, 400 si contenu vide, 404 si conversation introuvable
      */
     @PostMapping("/{conversationId}/messages")
     public ResponseEntity<?> addMessage(
@@ -135,10 +135,10 @@ public class ConversationController {
             return badRequest("Le champ 'content' est obligatoire et ne peut pas être vide.");
         }
 
-        conversationService.addMessage(conversationId, request.content());
-        log.info("POST /projects/{}/conversations/{}/messages — message ajouté",
+        String response = conversationService.chat(conversationId, request.content());
+        log.info("POST /projects/{}/conversations/{}/messages — réponse assistant générée",
                 projectId, conversationId);
-        return ResponseEntity.status(HttpStatus.CREATED).build();
+        return ResponseEntity.ok(MessageResponse.assistant(response));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

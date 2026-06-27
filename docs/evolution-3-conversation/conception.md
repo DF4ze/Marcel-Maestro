@@ -1,5 +1,5 @@
 # Évolution 3 — Marcel parle vraiment
-**Statut : En cours d'implémentation — E3-M0 ✅**
+**Statut : En cours d'implémentation — E3-M0 ✅ · E3-M1 🔄**
 **Date : 2026-06-27**
 **Prérequis : E2 complète — multi-projets, conversations persistées, JdbcChatMemory, HITL enrichi, Telegram E2-M5**
 
@@ -48,16 +48,14 @@ Le `ChatAgent` est un **nouveau composant** dans `mm-app` (pas dans `mm-core`) :
 
 Règle d'or : **le ChatAgent discute et délègue ; l'AgentLoop exécute.**
 
-### 2.2 Streaming SSE — M1 batch, M2 SSE
+### 2.2 Streaming SSE — batch d'abord, SSE plus tard
 
-M1 implémente le ChatAgent en mode batch (`.call()`). C'est le minimum viable qui ferme
-le trou critique (aucune réponse LLM). L'architecture est conçue pour le streaming dès M1,
-mais sans l'exposer.
+E3-M1 implémente le ChatAgent en mode batch (`.call()`). C'est le minimum viable qui ferme
+le trou critique : aujourd'hui l'API stocke le message mais ne répond pas.
 
-M2 ajoute le streaming SSE (`.stream()`) sur le même endpoint. Le client reçoit les tokens
-au fur et à mesure : la latence perçue tombe à ~200ms (premier token) au lieu de 3-5s
-(réponse batch complète). Spring AI rend le passage `.call()` → `.stream()` non-destructif
-(même `ChatClient`, même historique).
+Le streaming SSE est volontairement différé à E3-M5. La priorité immédiate est de rendre
+le endpoint conversationnel utile, puis de stabiliser la sémantique conversation/tâche
+avant d'ajouter la complexité du flux tokenisé.
 
 ### 2.3 submit_task — outil Spring AI, pas outil AgentLoop
 
@@ -94,7 +92,7 @@ Dès E3-M1, chaque réponse du ChatAgent est persistée comme message `ASSISTANT
 L'historique complet (question + réponse) survit aux redémarrages et est rechargé à la
 reprise d'une conversation.
 
-### 2.6 Lien conversation ↔ tâches (E3-M3)
+### 2.6 Lien conversation ↔ tâches (E3-M5)
 
 Quand le ChatAgent délègue une tâche, le `taskId` est enregistré dans une table de jointure
 `conversation_task`. Cela permet :
@@ -102,7 +100,7 @@ Quand le ChatAgent délègue une tâche, le `taskId` est enregistré dans une ta
 - De retrouver quelle conversation a lancé quelle tâche (pour la notification de retour)
 - D'associer le résultat final de la tâche à la mémoire de conversation
 
-### 2.7 Contexte projet enrichi (E3-M4)
+### 2.7 Contexte projet enrichi (E3-M3)
 
 Au-delà du nom et du workspace (M0), le ChatAgent reçoit en contexte le contenu de
 `project.md` et `roadmap.md` s'ils existent. Un outil `read_project_file` permet à Marcel
@@ -115,11 +113,11 @@ pendant le développement. Un cache TTL court pourra être ajouté si la latence
 
 ## 3. Schéma DB
 
-### E3-M0 à M2 — aucun changement de schéma
+### E3-M0 à M4 — aucun changement de schéma
 
 Les corrections et le ChatAgent batch/SSE n'exigent pas de migration Flyway.
 
-### E3-M3 — table conversation_task
+### E3-M5 — table conversation_task
 
 Migration Flyway `V4__conversation_task.sql` :
 
@@ -146,9 +144,9 @@ pas en DB. Le lien est une référence faible — suffisante pour la traçabilit
 |---------|----------|----------|----------|
 | `POST` | `/projects/{pId}/conversations/{id}/messages` | Stocke le message, 201 vide | Appelle le LLM, retourne la réponse Marcel |
 
-**E3-M1 (batch) :** retourne `200 OK` avec body `{"role": "assistant", "content": "..."}`.
+**E3-M1 (batch) :** retourne `200 OK` avec body `{"role": "ASSISTANT", "content": "..."}`.
 
-**E3-M2 (SSE) :** retourne `text/event-stream`, un événement par token :
+**E3-M5 (SSE) :** retourne `text/event-stream`, un événement par token :
 ```
 data: {"delta": "Je"}
 data: {"delta": " vais"}
@@ -156,7 +154,7 @@ data: {"delta": " analyser..."}
 data: [DONE]
 ```
 
-### Tâches liées à une conversation (E3-M3)
+### Tâches liées à une conversation (E3-M5)
 
 | Méthode | Endpoint | Action |
 |---------|----------|--------|
@@ -173,7 +171,7 @@ Suppression : `chatMemory.clear(conversationId)` ajouté.
 
 ### ConversationController (mm-app)
 `POST /{id}/messages` : délègue à `ConversationService.chat()` au lieu de `addMessage()`.
-En M2, retourne `SseEmitter` ou `Flux<String>` (WebFlux ou `SseEmitter` Servlet selon choix).
+En E3-M1, retourne une réponse JSON synchrone. Le SSE est différé.
 
 ### TelegramSessionService (mm-app)
 Champ ajouté : `Map<Long, String> activeConversationId` (en parallèle de `activeProjectId`).
@@ -185,7 +183,7 @@ et réutilisé pour tous les messages suivants du même `chatId`.
 ### TelegramMmController (mm-app)
 Handler `@Chat` : réutilise le `conversationId` actif au lieu de créer une nouvelle conversation.
 Commande `/reset` ajoutée : réinitialise le `conversationId` actif (nouvelle conversation).
-Commande `/history` ajoutée (E3-M5) : résumé des N derniers messages de la conversation active.
+Commande `/history` reste hors scope en M0/M1 et sera traitée plus tard si nécessaire.
 
 ### SystemPromptComposer / SystemPromptExtension (mm-core)
 `ProjectSystemPromptExtension` (E3-M0) injecte le nom et workspace path du projet.
@@ -220,15 +218,15 @@ conçu pour ce pattern. Le system prompt guide le LLM ; un tool disponible n'obl
 
 ---
 
-### ADR-027 — Batch en M1, SSE en M2
+### ADR-027 — Batch en M1, SSE en M5
 **Statut** : ✅ Acté
 
-**Décision** : E3-M1 implémente le ChatAgent en mode batch (`.call()`). E3-M2 ajoute
+**Décision** : E3-M1 implémente le ChatAgent en mode batch (`.call()`). E3-M5 ajoute
 le streaming SSE (`.stream()`) sur le même endpoint. L'architecture M1 est conçue pour
-faciliter le passage en M2 (même `ChatClient`, même `MessageChatMemoryAdvisor`).
+faciliter ce passage ultérieur (même `ChatClient`, même `MessageChatMemoryAdvisor`).
 
 **Justification** : KISS — batch suffit pour valider le comportement conversationnel.
-L'ajout du SSE en M2 est non-destructif et représente un delta minimal.
+Le SSE sera ajouté quand la base conversationnelle et la délégation de tâches seront stables.
 
 ---
 
@@ -307,69 +305,63 @@ vs 1-5s). Un cache TTL court sera ajouté si des mesures montrent une dégradati
 **Objectif** : `POST /conversations/{id}/messages` appelle vraiment le LLM et retourne une réponse.
 
 **Livrables** :
-- `ChatAgent` (bean Spring dans `mm-app`) : wrappeur autour du `ChatClient` avec `MessageChatMemoryAdvisor` (JdbcChatMemory), system prompt Marcel, sans outils dans ce milestone
-- `ConversationService.chat(conversationId, content)` : stocke le message USER, appelle `ChatAgent`, stocke la réponse ASSISTANT, retourne la réponse
-- `ConversationController` : `POST /{id}/messages` retourne `200 OK` + `{"role": "assistant", "content": "..."}`
-- System prompt Marcel défini : personnalité, règles de comportement (quand répondre, quand déléguer), langue française
-- `MessageResponse` DTO enrichi : champ `role` (USER / ASSISTANT)
-- Tests : historique rechargé après redémarrage ; isolation conversationId ; réponse cohérente avec l'historique ; titre généré (E2-M5 `ConversationTitleService` déclenché)
+- `ChatAgent` (bean Spring dans `mm-app`) : wrappeur autour du `ChatClient` avec `MessageChatMemoryAdvisor` ou équivalent Spring AI, mémoire JDBC par `conversationId`
+- `ChatAgent` ne doit pas appeler `chatMemory.add()` manuellement : l'advisor persiste déjà USER et ASSISTANT
+- `ConversationService.chat(conversationId, content)` : vérifie l'existence de la conversation, détecte le premier message avant appel LLM, délègue à `ChatAgent`, déclenche `ConversationTitleService.generateTitle()` uniquement au premier message
+- `ConversationController` : `POST /{id}/messages` retourne `200 OK` + `{"role": "ASSISTANT", "content": "..."}`
+- System prompt Marcel défini via propriété `mm.chat.system-prompt`, avec fallback code, composé avec `SystemPromptComposer`
+- `MessageResponse` DTO enrichi : champ `role`
+- Tests : réponse retournée, persistance ASSISTANT, historique rechargé, titre déclenché une seule fois, isolation entre conversations, non-régression sur `GET /messages`
 
 **Hors scope** : SSE, outils, délégation de tâches.
 
 ---
 
-### E3-M2 — Streaming SSE
-**Objectif** : Les réponses arrivent token par token — latence perçue < 500ms.
+### E3-M2 — Délégation de tâche depuis la conversation
+**Objectif** : Marcel peut décider qu'une demande doit passer par le moteur task-only.
 
 **Livrables** :
-- `ChatAgent.stream(conversationId, content)` : utilise `.stream()` au lieu de `.call()`, retourne `Flux<String>`
-- `ConversationController` : `POST /{id}/messages` produit `text/event-stream` ; format événement `{"delta": "..."}`, `[DONE]` en fin
-- Persistance ASSISTANT : le message complet est assemblé depuis le flux et persisté en `chatMemory` après `[DONE]`
-- Titre asynchrone : déclenché après assemblage complet (inchangé)
-- Tests : flux bien terminé par `[DONE]` ; message ASSISTANT persisté après fin de stream ; non-régression batch (tests E3-M1 rejoués via SSE)
+- outil `submit_task` exposé au `ChatClient`
+- réponse conversationnelle immédiate quand une tâche est lancée
+- première couture entre conversation et `Dispatcher`
+- tests de délégation et d'isolation
 
-**Hors scope** : Telegram streaming (les messages Telegram restent envoyés en batch — édition de message différée en E3-M5).
+**Hors scope** : SSE et suivi persistant conversation ↔ tâches.
 
 ---
 
-### E3-M3 — Délégation de tâche depuis la conversation
-**Objectif** : Marcel peut lancer une tâche déterministe depuis la conversation sans quitter le mode conversationnel.
-
-**Livrables** :
-- Outil `@Tool submit_task(description)` : soumet un `TaskMessage` dans le `Dispatcher`, retourne le `taskId` au LLM
-- `ChatAgent` : outil `submit_task` enregistré ; le LLM l'appelle si la demande est une action
-- Table `conversation_task` (Flyway V4) + entité + repository dans le starter
-- `ConversationTaskService` dans `mm-app` : `record(conversationId, taskId)`, `listByConversation(conversationId)`
-- Notification fin de tâche : `Dispatcher` appelle `HumanInteraction.notify()` avec le `conversationId` — Telegram indique à quelle conversation la tâche appartient
-- `GET /projects/{pId}/conversations/{id}/tasks` : liste les tâches liées
-- Tests : outil appelé → taskId enregistré dans `conversation_task` ; réponse immédiate sans attendre la fin de la tâche ; notification de fin avec référence conversation
-
-**Hors scope** : Résultat de tâche réinjecté dans la mémoire de conversation (couture ouverte).
-
----
-
-### E3-M4 — Contexte projet enrichi dans le system prompt
+### E3-M3 — Contexte projet enrichi dans le system prompt
 **Objectif** : Marcel connaît l'état du projet avant même qu'on lui parle.
 
 **Livrables** :
-- `ProjectContextExtension` : implémente `SystemPromptExtension`, lit `project.md` et `roadmap.md` depuis le workspace interne du projet courant ; inclut le contenu (tronqué à ~2000 tokens) si les fichiers existent
-- Outil `@Tool read_project_file(relativePath)` : lit un fichier du workspace projet déclaré (interne ou externe) ; `PathValidator` appliqué ; retour au LLM comme chaîne
-- `AgentContext` propagé dans le `ChatAgent` (le `projectId` et `conversationId` y sont déjà)
-- Tests : system prompt contient le contenu de `project.md` si présent ; absent si fichier inexistant (pas d'erreur) ; `read_project_file` respecte `PathValidator` (path traversal rejeté)
+- `ProjectContextExtension` : lit `project.md` et `roadmap.md` si présents
+- outillage minimal de lecture projet si nécessaire
+- tests de présence/absence du contexte et respect des garde-fous de path
 
-**Hors scope** : Écriture de fichiers depuis le ChatAgent (toujours via l'AgentLoop + HITL).
+**Hors scope** : écriture de fichiers depuis la conversation.
 
 ---
 
-### E3-M5 — Telegram enrichi + polish
-**Objectif** : Pilotage conversationnel complet depuis Telegram ; cohérence globale.
+### E3-M4 — Continuité Telegram et nettoyage mémoire
+**Objectif** : fiabiliser le canal Telegram et la cohérence de la mémoire conversationnelle.
 
 **Livrables** :
-- Commande `/history` : affiche un résumé des N derniers messages de la conversation active (appel LLM léger de résumé, comme la génération de titre)
-- Commande `/tasks` : liste les tâches en cours et terminées de la conversation active
-- Telegram SSE → édition de message : le bot envoie "…" puis édite le message au fil des tokens (Telegram API `editMessageText`). Fallback : envoi batch si l'édition échoue.
-- Nettoyage dette : validation appartenance `conversation → projet` dans `ConversationController` (vérification `conv.getProjectId().equals(projectId)` → 403 si incohérent)
-- Tests : `/history` produit un résumé cohérent ; `/tasks` liste les tâches ; message Telegram édité progressivement
+- validation manuelle et automatisée de la continuité `chatId` → `conversationId`
+- sécurisation de la purge mémoire sur les suppressions projet/conversation
+- durcissement des cas limites identifiés après M1/M2
+
+**Hors scope** : SSE et table de jointure conversation ↔ tâches.
+
+---
+
+### E3-M5 — Streaming SSE + lien conversation ↔ tâches
+**Objectif** : améliorer l'UX et la traçabilité une fois la conversation stable.
+
+**Livrables** :
+- streaming SSE sur `POST /messages`
+- persistance du message assistant assemblé en fin de flux
+- table `conversation_task` et endpoint de consultation
+- polish Telegram et traçabilité
 
 ---
 
@@ -381,7 +373,7 @@ vs 1-5s). Un cache TTL court sera ajouté si des mesures montrent une dégradati
 
 - **Telegram SSE — édition de message** : l'API Telegram ne supporte pas le streaming natif. L'édition de message (M5) est une approximation. Si le délai entre le premier et le dernier token dépasse ~30s, Telegram peut throttler les éditions. À surveiller.
 
-- **System prompt Marcel** : la personnalité, le ton et les règles de comportement de Marcel ne sont pas encore rédigés. C'est un livrable de E3-M1 à part entière — il mérite une session de conception dédiée.
+- **System prompt Marcel** : le prompt de base M1 doit rester concis, direct, en français, et explicite sur le fait que les actions concrètes passeront plus tard par le système de tâches.
 
 - **Tests d'intégration E3-M1/M2** : les tests existants (E2) utilisent `addMessage()` en mode stockage pur. La migration vers `chat()` (avec vrai appel LLM) nécessite un `ChatClient` mockable ou un profil de test avec `ScriptedChatModel` (déjà utilisé dans `mm-core`).
 

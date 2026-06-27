@@ -124,7 +124,7 @@ class ConversationServiceTest {
         assertThat(messagesConv2).hasSize(1);
 
         // Les messages de conv1 ne sont pas dans conv2
-        assertThat(messagesConv2.get(0).getText()).isEqualTo("Message dans conv2");
+        assertThat(messagesConv2.getFirst().getText()).isEqualTo("Message dans conv2");
     }
 
     @Test
@@ -141,7 +141,7 @@ class ConversationServiceTest {
 
         assertThat(conversationService.getMessages(convA.getId())).hasSize(1);
         assertThat(conversationService.getMessages(convB.getId())).hasSize(1);
-        assertThat(conversationService.getMessages(convA.getId()).get(0).getText())
+        assertThat(conversationService.getMessages(convA.getId()).getFirst().getText())
                 .isEqualTo("Message projet A");
     }
 
@@ -161,7 +161,7 @@ class ConversationServiceTest {
         List<Message> messages = jdbcChatMemoryRepository.findByConversationId(conv.getId());
 
         assertThat(messages).hasSize(1);
-        assertThat(messages.get(0).getText()).isEqualTo("Message persisté en JDBC");
+        assertThat(messages.getFirst().getText()).isEqualTo("Message persisté en JDBC");
     }
 
     @Test

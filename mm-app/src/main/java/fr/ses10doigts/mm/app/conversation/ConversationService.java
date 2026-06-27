@@ -1,6 +1,8 @@
 package fr.ses10doigts.mm.app.conversation;
 
+import fr.ses10doigts.mm.core.agent.AgentContext;
 import fr.ses10doigts.mm.app.project.ProjectNotFoundException;
+import fr.ses10doigts.mm.starter.hitl.AgentContextHolder;
 import fr.ses10doigts.mm.starter.conversation.ConversationEntity;
 import fr.ses10doigts.mm.starter.conversation.ConversationRepository;
 import fr.ses10doigts.mm.starter.conversation.ConversationStatus;
@@ -51,6 +53,8 @@ public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final ProjectRepository projectRepository;
     private final ChatMemory chatMemory;
+    private final ChatAgent chatAgent;
+    private final AgentContextHolder agentContextHolder;
 
     /**
      * Service de génération de titre (E2-M5). Injecté via {@link ObjectProvider}
@@ -179,6 +183,57 @@ public class ConversationService {
             log.info("Message soumis — conversationId={}, total messages={}",
                     conversationId, existing.size() + 1);
         }
+    }
+
+    /**
+     * Envoie un message utilisateur au LLM et retourne la réponse assistant.
+     *
+     * <p>Le premier message déclenche aussi la génération asynchrone du titre de conversation.
+     * La persistance USER / ASSISTANT est assurée par l'advisor Spring AI, sans écriture
+     * manuelle dans {@link ChatMemory}.</p>
+     *
+     * @param conversationId l'ID de la conversation cible
+     * @param content        le contenu du message utilisateur
+     * @return contenu textuel de la réponse assistant
+     * @throws ConversationNotFoundException si la conversation n'existe pas
+     */
+    @Transactional
+    public String chat(String conversationId, String content) {
+        ConversationEntity conversation = getConversation(conversationId);
+
+        log.debug("chat — conversationId injecté={}", conversationId);
+        log.debug("ChatMemory key — conversationId={}", conversationId);
+
+        List<Message> existing = chatMemory.get(conversationId);
+        boolean first = existing == null || existing.isEmpty();
+
+        AgentContext context = AgentContext.of(
+                "default",
+                conversation.getProjectId(),
+                conversationId,
+                "chat-" + UUID.randomUUID());
+
+        String response;
+        agentContextHolder.bind(context);
+        try {
+            response = chatAgent.chat(conversationId, content);
+        } finally {
+            agentContextHolder.clear();
+        }
+
+        if (first) {
+            log.info("Premier message conversationnel soumis — conversationId={}", conversationId);
+            ConversationTitleService titleService = titleServiceProvider.getIfAvailable();
+            if (titleService != null) {
+                titleService.generateTitle(conversationId, content);
+                log.debug("Génération de titre déclenchée — conversationId={}", conversationId);
+            }
+        } else {
+            log.info("Réponse conversationnelle générée — conversationId={}, messagesAvantAppel={}",
+                    conversationId, existing.size());
+        }
+
+        return response;
     }
 
     /**

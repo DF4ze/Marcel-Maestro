@@ -1,0 +1,713 @@
+{
+  "info": {
+    "name": "Marcel Maestro - E3-M1 Validation",
+    "description": "Collection Postman de validation manuelle pour E3-M1 : réponse LLM réelle sur POST /projects/{projectId}/conversations/{conversationId}/messages, persistance USER+ASSISTANT, historique rechargé, isolation mémoire, non-régression GET /messages. Importer la collection, démarrer l'application sur {{baseUrl}}, puis dérouler les dossiers dans l'ordre.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "projectNameA",
+      "value": "E3M1 Validation A",
+      "type": "string"
+    },
+    {
+      "key": "projectNameB",
+      "value": "E3M1 Validation B",
+      "type": "string"
+    },
+    {
+      "key": "projectIdA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectIdB",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "conversationIdA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "conversationIdB",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "assistantReply1",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "assistantReply2",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "assistantReplyB1",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0 - Santé",
+      "item": [
+        {
+          "name": "GET /api/tasks - application disponible",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('activeTasks présent', function () { pm.expect(body).to.have.property('activeTasks'); });",
+                  "pm.test('queueSize présent', function () { pm.expect(body).to.have.property('queueSize'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            },
+            "description": "Health-check minimal du backend avant de dérouler le scénario."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 - Setup projets",
+      "item": [
+        {
+          "name": "Créer Projet A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('projectIdA', body.id);",
+                  "pm.test('projectIdA mémorisé', function () { pm.expect(pm.collectionVariables.get('projectIdA')).to.be.a('string').and.not.empty; });",
+                  "console.log('projectIdA =', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{projectNameA}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Créer Projet B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('projectIdB', body.id);",
+                  "pm.test('projectIdB mémorisé', function () { pm.expect(pm.collectionVariables.get('projectIdB')).to.be.a('string').and.not.empty; });",
+                  "console.log('projectIdB =', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{projectNameB}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Conversation A / premier échange LLM",
+      "item": [
+        {
+          "name": "Créer conversation A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('conversationIdA', body.id);",
+                  "pm.test('conversationIdA mémorisé', function () { pm.expect(pm.collectionVariables.get('conversationIdA')).to.be.a('string').and.not.empty; });",
+                  "pm.test('status OPEN', function () { pm.expect(body.status).to.equal('OPEN'); });",
+                  "console.log('conversationIdA =', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /messages - premier message conversationnel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('assistantReply1', body.content);",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });",
+                  "pm.test('content non vide', function () { pm.expect(body.content).to.be.a('string').and.not.empty; });",
+                  "console.log('assistantReply1 =', body.content);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Bonjour Marcel, présente-toi en une phrase.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA}}",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /messages - vérifier USER + ASSISTANT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('2 messages', function () { pm.expect(body.length).to.equal(2); });",
+                  "pm.test('1er rôle USER', function () { pm.expect(body[0].role).to.equal('USER'); });",
+                  "pm.test('2e rôle ASSISTANT', function () { pm.expect(body[1].role).to.equal('ASSISTANT'); });",
+                  "pm.test('message utilisateur correct', function () { pm.expect(body[0].content).to.equal('Bonjour Marcel, présente-toi en une phrase.'); });",
+                  "pm.test('réponse assistant présente', function () { pm.expect(body[1].content).to.be.a('string').and.not.empty; });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA}}",
+                "messages"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Conversation A / historique rechargé",
+      "description": "Le deuxième POST doit réutiliser l'historique de la conversation via MessageChatMemoryAdvisor.",
+      "item": [
+        {
+          "name": "POST /messages - second message avec historique",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('assistantReply2', body.content);",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });",
+                  "pm.test('content non vide', function () { pm.expect(body.content).to.be.a('string').and.not.empty; });",
+                  "console.log('assistantReply2 =', body.content);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Quel était mon premier message ?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA}}",
+                "messages"
+              ]
+            },
+            "description": "Vérification semi-manuelle utile : la réponse de Marcel devrait faire référence au premier message."
+          }
+        },
+        {
+          "name": "GET /messages - vérifier 4 messages après deux échanges",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('4 messages', function () { pm.expect(body.length).to.equal(4); });",
+                  "pm.test('séquence USER/ASSISTANT/USER/ASSISTANT', function () {",
+                  "  pm.expect(body.map(m => m.role)).to.eql(['USER', 'ASSISTANT', 'USER', 'ASSISTANT']);",
+                  "});",
+                  "pm.test('2e message utilisateur correct', function () { pm.expect(body[2].content).to.equal('Quel était mon premier message ?'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA}}",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /conversation - vérifier le titre auto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('champ title présent', function () { pm.expect(body).to.have.property('title'); });",
+                  "console.log('title courant =', body.title);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA}}"
+              ]
+            },
+            "description": "Si title est encore null, attendre 2 à 3 secondes et rejouer : la génération est asynchrone."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Isolation entre conversations",
+      "item": [
+        {
+          "name": "Créer conversation B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('conversationIdB', body.id);",
+                  "pm.test('conversationIdB mémorisé', function () { pm.expect(pm.collectionVariables.get('conversationIdB')).to.be.a('string').and.not.empty; });",
+                  "console.log('conversationIdB =', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdB}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdB}}",
+                "conversations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /messages dans B - conversation indépendante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('assistantReplyB1', body.content);",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });",
+                  "pm.test('content non vide', function () { pm.expect(body.content).to.be.a('string').and.not.empty; });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Dis simplement bonjour depuis la conversation B.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdB}}/conversations/{{conversationIdB}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdB}}",
+                "conversations",
+                "{{conversationIdB}}",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /messages de B - vérifier 2 messages",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('2 messages dans B', function () { pm.expect(body.length).to.equal(2); });",
+                  "pm.test('séquence USER/ASSISTANT', function () { pm.expect(body.map(m => m.role)).to.eql(['USER', 'ASSISTANT']); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdB}}/conversations/{{conversationIdB}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdB}}",
+                "conversations",
+                "{{conversationIdB}}",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /messages de A - vérifier qu'A reste intacte",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('A contient toujours 4 messages', function () { pm.expect(body.length).to.equal(4); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA}}",
+                "messages"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Validation erreurs et DB",
+      "item": [
+        {
+          "name": "POST /messages avec contenu vide -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });",
+                  "const body = pm.response.json();",
+                  "pm.test('message erreur présent', function () { pm.expect(body.error).to.include('content'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA}}",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Étape manuelle SQL - vérifier USER + ASSISTANT dans SPRING_AI_CHAT_MEMORY",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            },
+            "description": "Action manuelle hors Postman. Ouvrir data/mm-memory.db puis exécuter :\n\nSELECT conversation_id, type, content\nFROM SPRING_AI_CHAT_MEMORY\nWHERE conversation_id IN ('{{conversationIdA}}', '{{conversationIdB}}')\nORDER BY conversation_id, timestamp;\n\nAttendus :\n- conversation A : 4 lignes = USER, ASSISTANT, USER, ASSISTANT\n- conversation B : 2 lignes = USER, ASSISTANT\n- aucune pollution croisée entre A et B"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 - Telegram (note)",
+      "item": [
+        {
+          "name": "Étape informative - Telegram n'est pas le bon canal pour valider E3-M1",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            },
+            "description": "E3-M1 valide le nouveau endpoint REST conversationnel. Le canal Telegram continue de passer par le flux tâches/orchestrateur, donc il n'est pas pertinent pour valider la réponse LLM directe de POST /projects/{projectId}/conversations/{conversationId}/messages. Tu peux l'utiliser uniquement pour vérifier qu'E3-M0 n'a pas été cassé (/switch, /reset, continuité de conversationId)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7 - Nettoyage optionnel",
+      "item": [
+        {
+          "name": "Supprimer Projet A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204 No Content', function () { pm.response.to.have.status(204); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Supprimer Projet B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204 No Content', function () { pm.response.to.have.status(204); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdB}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdB}}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
