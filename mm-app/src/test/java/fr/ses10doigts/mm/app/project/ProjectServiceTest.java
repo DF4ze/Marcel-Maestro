@@ -18,6 +18,7 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.chat.memory.repository.jdbc.JdbcChatMemoryRepository;
@@ -39,6 +40,7 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
+@Tag("very-slow")
 class ProjectServiceTest {
 
     @Autowired
@@ -112,6 +114,27 @@ class ProjectServiceTest {
         assertThat(Files.exists(expectedDir)).isTrue();
         assertThat(Files.isDirectory(expectedDir)).isTrue();
         assertThat(project.getWorkspacePath()).isEqualTo(expectedDir.toAbsolutePath().toString());
+    }
+
+    @Test
+    @DisplayName("create initialise PROJECT.md et ROADMAP.md avec un contenu d'amorçage")
+    void createInitializesProjectContextFiles() throws IOException {
+        ProjectEntity project = projectService.create("projet-contexte-initial");
+
+        Path workspaceDir = Paths.get(project.getWorkspacePath());
+        Path projectFile = workspaceDir.resolve("PROJECT.md");
+        Path roadmapFile = workspaceDir.resolve("ROADMAP.md");
+
+        assertThat(Files.exists(projectFile)).isTrue();
+        assertThat(Files.exists(roadmapFile)).isTrue();
+        assertThat(Files.readString(projectFile))
+                .contains("pose des questions ciblées")
+                .contains("Objectif")
+                .contains("Stack technique");
+        assertThat(Files.readString(roadmapFile))
+                .contains("plan d'exécution réaliste")
+                .contains("Milestones")
+                .contains("Critères de succès");
     }
 
     @Test

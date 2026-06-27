@@ -1,6 +1,6 @@
 # État d'implémentation — Marcel Maestro
 **Date : 2026-06-27**
-**Statut : E1 (8 étapes) ✅ + E2 (5 milestones) ✅ + E3-M0 ✅ + E3-M1 ✅ + E3-M2 ✅ — E3-M3 en cours**
+**Statut : E1 (8 étapes) ✅ + E2 (5 milestones) ✅ + E3-M0 ✅ + E3-M1 ✅ + E3-M2 ✅ + E3-M3 ✅ + E3-M4 ✅ — E3-M5 en cours**
 
 ---
 
@@ -94,9 +94,14 @@ Le système E3 cible un mode hybride : réponse directe si Marcel peut répondre
 ou soumission d'une tâche si l'action doit passer par l'`AgentLoop`. Ce branchement n'est pas
 encore câblé.
 
-### Trou #4 — Pas encore de streaming ni de traçabilité conversation ↔ tâches
+### Trou #4 — Pas encore de navigation entre conversations
 
-Le endpoint REST est encore en mode batch vide et il n'existe ni SSE, ni lien persistant entre
+L'utilisateur peut switcher de projet (`/switch` Telegram) mais pas de conversation. Il n'existe
+pas d'interface pour lister, sélectionner ou fermer une conversation existante — ni en REST ni Telegram.
+
+### Trou #5 — Pas encore de streaming ni de traçabilité conversation ↔ tâches
+
+Le endpoint REST est encore en mode batch et il n'existe ni SSE, ni lien persistant entre
 une conversation et les tâches qu'elle a lancées.
 
 ---
@@ -125,9 +130,14 @@ POST /conversations/{id}/messages
 |---|-------|-----------|
 | E3-M1 | ChatAgent — réponse LLM réelle dans `POST /conversations/{id}/messages` | ⭐ critique |
 | E3-M2 | Délégation tâche depuis la conversation (outil `submit_task`) | ⭐ critique |
-| E3-M3 | Contexte projet dans le system prompt (project.md, roadmap) | important |
+| E3-M3 | Contexte projet dans le system prompt (PROJECT.md, ROADMAP.md) | important |
+
+## 6. Dette technique
+
+- **Troncature du contexte projet** : le contenu de `PROJECT.md` et `ROADMAP.md` est tronqué avant injection dans le system prompt. C'est robuste côté coût de contexte, mais imparfait sur les gros fichiers. Une mécanique de résumé ciblé, ou de résumé incrémental mis en cache, serait plus pertinente qu'une simple limite en caractères.
 | E3-M4 | Continuité de conversation Telegram + nettoyage cascade mémoire | important |
-| E3-M5 | Streaming SSE + lien conversation ↔ tâches en DB | confort |
+| E3-M5 | Gestionnaire de conversations — CRUD + navigation Telegram (`/conversations`, `/conv`, `/new`) | important |
+| E3-M6 | Streaming SSE + lien conversation ↔ tâches en DB | confort |
 
 ---
 

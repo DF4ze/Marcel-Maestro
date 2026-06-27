@@ -28,6 +28,7 @@ import fr.ses10doigts.mm.starter.journal.JournalProperties;
 import fr.ses10doigts.mm.starter.memory.JpaMemoryStore;
 import fr.ses10doigts.mm.starter.memory.MemoryEntryRepository;
 import fr.ses10doigts.mm.starter.prompt.AutonomySystemPromptExtension;
+import fr.ses10doigts.mm.starter.prompt.ProjectContextExtension;
 import fr.ses10doigts.mm.starter.prompt.ProjectSystemPromptExtension;
 import fr.ses10doigts.mm.starter.prompt.ToolsSystemPromptExtension;
 import fr.ses10doigts.mm.core.tool.WorkspaceRegistry;
@@ -375,6 +376,25 @@ public class MmCoreAutoConfiguration {
             AgentContextHolder contextHolder,
             ProjectRepository projectRepository) {
         return new ProjectSystemPromptExtension(contextHolder, projectRepository);
+    }
+
+    /**
+     * Extension de prompt injectant le contenu de {@code PROJECT.md} et {@code ROADMAP.md} (E3-M3).
+     *
+     * @param contextHolder     propagateur de contexte par thread
+     * @param projectRepository repository des projets
+     * @param pathValidator     validateur anti path-traversal
+     * @param maxCharsPerFile   limite de caractères par fichier projet
+     * @return extension injectée dans les composeurs de prompt
+     */
+    @Bean
+    @ConditionalOnMissingBean(ProjectContextExtension.class)
+    public ProjectContextExtension projectContextExtension(
+            AgentContextHolder contextHolder,
+            ProjectRepository projectRepository,
+            PathValidator pathValidator,
+            @Value("${mm.chat.context.max-chars-per-file:3000}") int maxCharsPerFile) {
+        return new ProjectContextExtension(contextHolder, projectRepository, pathValidator, maxCharsPerFile);
     }
 
     // AgentLoop

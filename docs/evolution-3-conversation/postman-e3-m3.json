@@ -1,0 +1,303 @@
+{
+  "info": {
+    "name": "Marcel Maestro - E3-M3 Validation",
+    "description": "Collection Postman de validation manuelle pour E3-M3 : contexte projet enrichi dans le system prompt et lecture sécurisée de fichiers projet. Importer la collection, démarrer l'application sur {{baseUrl}}, puis exécuter les dossiers dans l'ordre.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "projectName", "value": "E3M3 Validation", "type": "string" },
+    { "key": "emptyProjectName", "value": "E3M3 Sans Contexte", "type": "string" },
+    { "key": "projectId", "value": "", "type": "string" },
+    { "key": "emptyProjectId", "value": "", "type": "string" },
+    { "key": "conversationId", "value": "", "type": "string" },
+    { "key": "emptyConversationId", "value": "", "type": "string" },
+    { "key": "workspacePath", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "Créer projet de test",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('projectId', body.id);",
+                  "pm.collectionVariables.set('workspacePath', body.workspacePath);",
+                  "pm.test('projectId mémorisé', function () { pm.expect(pm.collectionVariables.get('projectId')).to.be.a('string').and.not.empty; });",
+                  "pm.test('workspacePath mémorisé', function () { pm.expect(pm.collectionVariables.get('workspacePath')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{projectName}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            }
+          }
+        },
+        {
+          "name": "Lire le projet créé",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('workspacePath', body.workspacePath);",
+                  "pm.test('workspacePath confirmé', function () { pm.expect(body.workspacePath).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            },
+            "description": "Vérifier dans {{workspacePath}} la présence automatique de PROJECT.md et ROADMAP.md, puis créer ou mettre à jour src/Main.java avant de poursuivre."
+          }
+        },
+        {
+          "name": "Créer conversation de test",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('conversationId', body.id);",
+                  "pm.test('conversationId mémorisé', function () { pm.expect(pm.collectionVariables.get('conversationId')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "T1 - Contexte injecté",
+      "item": [
+        {
+          "name": "POST /messages - parle-moi de ce projet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });",
+                  "pm.test('content non vide', function () { pm.expect(body.content).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Parle-moi de ce projet\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId}}", "messages"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "T2 - read_project_file",
+      "item": [
+        {
+          "name": "POST /messages - lis src/Main.java",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });",
+                  "pm.test('content non vide', function () { pm.expect(body.content).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier src/Main.java\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId}}", "messages"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "T3 - Path traversal",
+      "item": [
+        {
+          "name": "POST /messages - demande interdite",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });",
+                  "pm.test('content non vide', function () { pm.expect(body.content).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lis le fichier ../../Windows/System32/cmd.exe\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationId}}", "messages"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "T4 - Projet sans contexte",
+      "item": [
+        {
+          "name": "Créer second projet vide",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('emptyProjectId', body.id);",
+                  "pm.test('emptyProjectId mémorisé', function () { pm.expect(pm.collectionVariables.get('emptyProjectId')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{emptyProjectName}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Après création, supprimer ou renommer manuellement PROJECT.md et ROADMAP.md dans le workspace de ce second projet pour tester l'absence de contexte."
+          }
+        },
+        {
+          "name": "Créer conversation du projet vide",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('emptyConversationId', body.id);",
+                  "pm.test('emptyConversationId mémorisé', function () { pm.expect(pm.collectionVariables.get('emptyConversationId')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{emptyProjectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{emptyProjectId}}", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "POST /messages - projet vide",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });",
+                  "pm.test('content non vide', function () { pm.expect(body.content).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Décris-moi le projet sur lequel tu travailles\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{emptyProjectId}}/conversations/{{emptyConversationId}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{emptyProjectId}}", "conversations", "{{emptyConversationId}}", "messages"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

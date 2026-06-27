@@ -15,6 +15,7 @@ import fr.ses10doigts.mm.core.hitl.HitlGuard;
 import fr.ses10doigts.mm.core.hitl.HitlPolicy;
 import java.nio.file.Path;
 import java.util.Map;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -68,6 +69,7 @@ class ToolExecutionGuardTest {
     }
 
     @Test
+    @Tag("very-slow")
     void outilTropLent_retourneTimeout() {
         ToolExecutionGuard guard = new ToolExecutionGuard(null, null);
 

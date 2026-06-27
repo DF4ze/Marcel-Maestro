@@ -41,6 +41,59 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class ProjectService {
 
+    private static final String PROJECT_FILE_NAME = "PROJECT.md";
+    private static final String ROADMAP_FILE_NAME = "ROADMAP.md";
+    private static final String PROJECT_FILE_TEMPLATE = """
+            # PROJECT
+
+            Ce fichier est initialisé automatiquement à la création du projet.
+
+            Marcel :
+            - pose des questions ciblées à l'utilisateur pour comprendre le projet ;
+            - clarifie le besoin métier, le périmètre, la stack, les contraintes et les règles de travail ;
+            - complète ensuite ce document progressivement avec des informations factuelles validées.
+
+            Questions à poser en priorité :
+            1. Quel est l'objectif principal du projet ?
+            2. Qui sont les utilisateurs ou systèmes concernés ?
+            3. Quelle stack technique et quelles versions faut-il utiliser ?
+            4. Quelles contraintes d'architecture, de sécurité, de performance ou de déploiement faut-il respecter ?
+            5. Quelles règles métier, conventions de code ou décisions d'architecture sont déjà actées ?
+
+            Sections à compléter avec l'utilisateur :
+            - Objectif
+            - Contexte métier
+            - Stack technique
+            - Contraintes
+            - Décisions actées
+            - Questions ouvertes
+            """;
+    private static final String ROADMAP_FILE_TEMPLATE = """
+            # ROADMAP
+
+            Ce fichier est initialisé automatiquement à la création du projet.
+
+            Marcel :
+            - pose des questions ciblées à l'utilisateur pour construire un plan d'exécution réaliste ;
+            - clarifie les priorités, livrables, dépendances, risques et critères de validation ;
+            - met ensuite à jour cette roadmap au fil du projet.
+
+            Questions à poser en priorité :
+            1. Quel est le premier résultat concret attendu ?
+            2. Quelles étapes ou milestones sont déjà connues ?
+            3. Quelles dépendances, validations humaines ou contraintes externes peuvent bloquer l'avancement ?
+            4. Quels tests ou critères de succès permettent de valider chaque étape ?
+            5. Y a-t-il une échéance, un ordre de priorité ou un niveau d'urgence particulier ?
+
+            Sections à compléter avec l'utilisateur :
+            - Vision de livraison
+            - Milestones
+            - Tâches immédiates
+            - Risques et dépendances
+            - Critères de succès
+            - Prochaines questions
+            """;
+
     private final ProjectRepository projectRepository;
     private final ProjectWorkspaceRepository workspaceRepository;
     private final ConversationRepository conversationRepository;
@@ -71,6 +124,7 @@ public class ProjectService {
         log.debug("Chemin workspace calculé — path='{}'", workspacePath);
 
         createDirectory(workspacePath);
+        initializeProjectContextFiles(workspacePath);
 
         Instant now = Instant.now();
         ProjectEntity project = ProjectEntity.builder()
@@ -397,6 +451,24 @@ public class ProjectService {
             log.debug("Dossier créé — path='{}'", path);
         } catch (IOException e) {
             throw new UncheckedIOException("Impossible de créer le dossier workspace : " + path, e);
+        }
+    }
+
+    private void initializeProjectContextFiles(Path workspacePath) {
+        writeFileIfAbsent(workspacePath.resolve(PROJECT_FILE_NAME), PROJECT_FILE_TEMPLATE);
+        writeFileIfAbsent(workspacePath.resolve(ROADMAP_FILE_NAME), ROADMAP_FILE_TEMPLATE);
+    }
+
+    private void writeFileIfAbsent(Path path, String content) {
+        try {
+            if (Files.notExists(path)) {
+                Files.writeString(path, content);
+                log.info("Fichier projet initialisé — path='{}'", path);
+            } else {
+                log.debug("Fichier projet déjà présent, initialisation ignorée — path='{}'", path);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Impossible d'initialiser le fichier projet : " + path, e);
         }
     }
 

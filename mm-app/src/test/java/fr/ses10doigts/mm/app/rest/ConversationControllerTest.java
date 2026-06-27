@@ -14,6 +14,7 @@ import fr.ses10doigts.mm.app.support.ScriptedChatModel;
 import fr.ses10doigts.mm.starter.conversation.ConversationEntity;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -35,6 +36,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({SyncAsyncTestConfiguration.class, ScriptedChatClientTestConfiguration.class})
 @TestPropertySource(properties = "spring.main.web-application-type=servlet")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
+@Tag("slow")
 class ConversationControllerTest {
 
     @Autowired

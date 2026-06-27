@@ -1,5 +1,5 @@
 # Évolution 3 — Marcel parle vraiment
-**Statut : En cours d'implémentation — E3-M0 ✅ · E3-M1 ✅ · E3-M2 ✅ · E3-M3 🔄**
+**Statut : En cours d'implémentation — E3-M0 ✅ · E3-M1 ✅ · E3-M2 ✅ · E3-M3 ✅ · E3-M4 ✅ · E3-M5 🔄 · E3-M6 📋**
 **Date : 2026-06-27**
 **Prérequis : E2 complète — multi-projets, conversations persistées, JdbcChatMemory, HITL enrichi, Telegram E2-M5**
 
@@ -92,7 +92,20 @@ Dès E3-M1, chaque réponse du ChatAgent est persistée comme message `ASSISTANT
 L'historique complet (question + réponse) survit aux redémarrages et est rechargé à la
 reprise d'une conversation.
 
-### 2.6 Lien conversation ↔ tâches (E3-M5)
+### 2.6 Gestionnaire de conversations (E3-M5)
+
+L'utilisateur peut aujourd'hui switcher de projet (Telegram `/switch`) mais pas de conversation.
+E3-M5 ajoute la navigation entre conversations : lister, sélectionner, renommer, fermer.
+
+Côté REST : enrichissement de `GET /projects/{pId}/conversations` (ajout de `messageCount`, `lastMessageAt`),
+endpoint `PATCH` pour renommer manuellement (override du titre LLM), endpoint `POST /{id}/close` pour
+fermer une conversation (statut `CLOSED`). La suppression + purge mémoire est déjà gérée depuis E3-M0.
+
+Côté Telegram : commande `/conversations` (liste les 5 dernières du projet actif), commande `/conv <n>`
+pour switcher vers une conversation existante, commande `/new` pour en démarrer une proprement (équivalent
+explicite de `/reset`).
+
+### 2.7 Lien conversation ↔ tâches (E3-M6)
 
 Quand le ChatAgent délègue une tâche, le `taskId` est enregistré dans une table de jointure
 `conversation_task`. Cela permet :
@@ -100,10 +113,10 @@ Quand le ChatAgent délègue une tâche, le `taskId` est enregistré dans une ta
 - De retrouver quelle conversation a lancé quelle tâche (pour la notification de retour)
 - D'associer le résultat final de la tâche à la mémoire de conversation
 
-### 2.7 Contexte projet enrichi (E3-M3)
+### 2.8 Contexte projet enrichi (E3-M3)
 
 Au-delà du nom et du workspace (M0), le ChatAgent reçoit en contexte le contenu de
-`project.md` et `roadmap.md` s'ils existent. Un outil `read_project_file` permet à Marcel
+`PROJECT.md` et `ROADMAP.md` s'ils existent. Un outil `read_project_file` permet à Marcel
 d'aller chercher d'autres fichiers projet à la demande.
 
 La lecture est faite à chaque appel (pas de cache) : les fichiers évoluent fréquemment
@@ -117,7 +130,16 @@ pendant le développement. Un cache TTL court pourra être ajouté si la latence
 
 Les corrections et le ChatAgent batch/SSE n'exigent pas de migration Flyway.
 
-### E3-M5 — table conversation_task
+### E3-M5 — statut CLOSED sur les conversations
+
+Migration Flyway `V4__conversation_status.sql` : ajout d'une colonne `status` à la table `conversation`
+avec valeur par défaut `ACTIVE` (rétrocompatible).
+
+```sql
+ALTER TABLE conversation ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE';
+```
+
+### E3-M6 — table conversation_task
 
 Migration Flyway `V4__conversation_task.sql` :
 
@@ -134,6 +156,8 @@ CREATE TABLE conversation_task (
 `task_id` n'est pas une clé étrangère : les tâches vivent dans la `TaskQueue` in-memory,
 pas en DB. Le lien est une référence faible — suffisante pour la traçabilité.
 
+Migration Flyway `V5__conversation_task.sql` (anciennement V4, décalé après E3-M5).
+
 ---
 
 ## 4. API REST
@@ -146,7 +170,7 @@ pas en DB. Le lien est une référence faible — suffisante pour la traçabilit
 
 **E3-M1 (batch) :** retourne `200 OK` avec body `{"role": "ASSISTANT", "content": "..."}`.
 
-**E3-M5 (SSE) :** retourne `text/event-stream`, un événement par token :
+**E3-M6 (SSE) :** retourne `text/event-stream`, un événement par token :
 ```
 data: {"delta": "Je"}
 data: {"delta": " vais"}
@@ -154,7 +178,15 @@ data: {"delta": " analyser..."}
 data: [DONE]
 ```
 
-### Tâches liées à une conversation (E3-M5)
+### Conversations CRUD enrichi (E3-M5)
+
+| Méthode | Endpoint | Action |
+|---------|----------|--------|
+| `GET` | `/projects/{pId}/conversations` | Liste les conversations — enrichi avec `messageCount`, `lastMessageAt` |
+| `PATCH` | `/projects/{pId}/conversations/{id}` | Renommer une conversation (override du titre LLM) |
+| `POST` | `/projects/{pId}/conversations/{id}/close` | Fermer une conversation (statut `CLOSED`) |
+
+### Tâches liées à une conversation (E3-M6)
 
 | Méthode | Endpoint | Action |
 |---------|----------|--------|
@@ -187,7 +219,7 @@ Commande `/history` reste hors scope en M0/M1 et sera traitée plus tard si néc
 
 ### SystemPromptComposer / SystemPromptExtension (mm-core)
 `ProjectSystemPromptExtension` (E3-M0) injecte le nom et workspace path du projet.
-`ProjectContextExtension` (E3-M4) injecte le contenu de `project.md` et `roadmap.md`.
+`ProjectContextExtension` (E3-M4) injecte le contenu de `PROJECT.md` et `ROADMAP.md`.
 Pas de modification du contrat `SystemPromptExtension` — ajout d'implémentations.
 
 ### AgentContext
@@ -218,15 +250,15 @@ conçu pour ce pattern. Le system prompt guide le LLM ; un tool disponible n'obl
 
 ---
 
-### ADR-027 — Batch en M1, SSE en M5
+### ADR-027 — Batch en M1, SSE en M6
 **Statut** : ✅ Acté
 
-**Décision** : E3-M1 implémente le ChatAgent en mode batch (`.call()`). E3-M5 ajoute
+**Décision** : E3-M1 implémente le ChatAgent en mode batch (`.call()`). E3-M6 ajoute
 le streaming SSE (`.stream()`) sur le même endpoint. L'architecture M1 est conçue pour
 faciliter ce passage ultérieur (même `ChatClient`, même `MessageChatMemoryAdvisor`).
 
 **Justification** : KISS — batch suffit pour valider le comportement conversationnel.
-Le SSE sera ajouté quand la base conversationnelle et la délégation de tâches seront stables.
+Le SSE sera ajouté quand la navigation entre conversations (M5) sera stabilisée.
 
 ---
 
@@ -275,7 +307,7 @@ Les `AgentTool` restent le bon pattern pour les outils à risque de l'`AgentLoop
 ### ADR-031 — Contexte projet : lecture fichier à chaque appel, pas de cache
 **Statut** : ✅ Acté
 
-**Décision** : `project.md` et `roadmap.md` sont lus depuis le filesystem à chaque appel
+**Décision** : `PROJECT.md` et `ROADMAP.md` sont lus depuis le filesystem à chaque appel
 du ChatAgent. Pas de cache applicatif.
 
 **Justification** : Ces fichiers évoluent fréquemment (Marcel les met à jour lui-même). Un cache
@@ -330,11 +362,11 @@ vs 1-5s). Un cache TTL court sera ajouté si des mesures montrent une dégradati
 
 ---
 
-### E3-M3 — Contexte projet enrichi dans le system prompt 🔄 `en cours`
+### E3-M3 — Contexte projet enrichi dans le system prompt ✅ `done` (2026-06-27)
 **Objectif** : Marcel connaît l'état du projet avant même qu'on lui parle.
 
 **Livrables** :
-- `ProjectContextExtension` : lit `project.md` et `roadmap.md` si présents
+- `ProjectContextExtension` : lit `PROJECT.md` et `ROADMAP.md` si présents
 - outillage minimal de lecture projet si nécessaire
 - tests de présence/absence du contexte et respect des garde-fous de path
 
@@ -342,7 +374,7 @@ vs 1-5s). Un cache TTL court sera ajouté si des mesures montrent une dégradati
 
 ---
 
-### E3-M4 — Continuité Telegram et nettoyage mémoire
+### E3-M4 — Continuité Telegram et nettoyage mémoire ✅ `done` (2026-06-27)
 **Objectif** : fiabiliser le canal Telegram et la cohérence de la mémoire conversationnelle.
 
 **Livrables** :
@@ -354,14 +386,53 @@ vs 1-5s). Un cache TTL court sera ajouté si des mesures montrent une dégradati
 
 ---
 
-### E3-M5 — Streaming SSE + lien conversation ↔ tâches
-**Objectif** : améliorer l'UX et la traçabilité une fois la conversation stable.
+### E3-M5 — Gestionnaire de conversations (navigation et cycle de vie)
+**Objectif** : permettre à l'utilisateur de naviguer entre plusieurs conversations, comme on navigue entre projets.
 
 **Livrables** :
-- streaming SSE sur `POST /messages`
+
+*Flyway :*
+- `V4__conversation_status.sql` : colonne `status TEXT NOT NULL DEFAULT 'ACTIVE'` sur `conversation`
+
+*REST — `ConversationController` :*
+- `GET /projects/{pId}/conversations` : enrichi avec `messageCount` et `lastMessageAt`
+- `PATCH /projects/{pId}/conversations/{id}` : renommer (body `{"title": "..."}`) — override manuel du titre LLM
+- `POST /projects/{pId}/conversations/{id}/close` : passe le statut à `CLOSED`, ne supprime pas
+- `GET /projects/{pId}/conversations` : filtrage optionnel `?status=ACTIVE|CLOSED|ALL` (défaut `ACTIVE`)
+
+*`ConversationService` :*
+- `close(conversationId)` : valide existence + met `status = CLOSED`
+- `rename(conversationId, newTitle)` : valide existence + met à jour `title`
+- `findAllByProjectId(projectId, status)` : tri par `lastMessageAt DESC`, paginé
+
+*Telegram — `TelegramMmController` :*
+- `/conversations` : liste les 5 conversations actives du projet en cours (titre + date)
+- `/conv <n>` : sélectionne la conversation n° n de la liste (switche le `conversationId` actif)
+- `/new` : démarre une nouvelle conversation proprement (alias explicite de `/reset` mais sans ambiguïté sémantique)
+
+*Tests :*
+- Fermeture + vérification statut
+- Rename + vérification en GET
+- Filtrage par statut
+- Telegram : `/conversations` renvoie la liste, `/conv 1` switche correctement
+- Plan de test Postman (collection + dossier nettoyage)
+- Étapes manuelles Telegram documentées
+
+⚠️ **Build Maven lent** : prévoir 10–15 minutes pour `mvn verify` ; configurer les timeouts JUnit ≥ 600 000 ms.
+
+**Hors scope** : SSE, table `conversation_task`.
+
+---
+
+### E3-M6 — Streaming SSE + lien conversation ↔ tâches
+**Objectif** : améliorer l'UX (tokens au fil de l'eau) et la traçabilité (qui a lancé quelle tâche).
+
+**Livrables** :
+- streaming SSE sur `POST /messages` (`.stream()` Spring AI)
 - persistance du message assistant assemblé en fin de flux
-- table `conversation_task` et endpoint de consultation
-- polish Telegram et traçabilité
+- `V5__conversation_task.sql` : table `conversation_task` (id, conversation_id, task_id, submitted_at, status)
+- endpoint `GET /projects/{pId}/conversations/{id}/tasks`
+- polish Telegram : édition de message in-place pour simuler le streaming (throttling à surveiller)
 
 ---
 
@@ -369,7 +440,7 @@ vs 1-5s). Un cache TTL court sera ajouté si des mesures montrent une dégradati
 
 - **Résultat de tâche → mémoire de conversation** : quand une tâche AgentLoop se termine, faut-il réinjecter son output dans la `JdbcChatMemory` de la conversation qui l'a lancée ? Ce serait la fermeture complète de la boucle conversation/tâche. Différé post-E3 (complexité du format AgentOutcome → texte naturel).
 
-- **Nombre de tokens du contexte projet** : `project.md` peut devenir très long. Faut-il une stratégie de troncature intelligente (résumé LLM) ou une limite de caractères fixe ? Décision au moment de E3-M4 selon les retours terrain.
+- **Nombre de tokens du contexte projet** : `PROJECT.md` et `ROADMAP.md` sont aujourd'hui tronqués à une limite fixe. Une stratégie de résumé ciblé serait plus robuste pour les gros projets que cette troncature brute.
 
 - **Telegram SSE — édition de message** : l'API Telegram ne supporte pas le streaming natif. L'édition de message (M5) est une approximation. Si le délai entre le premier et le dernier token dépasse ~30s, Telegram peut throttler les éditions. À surveiller.
 

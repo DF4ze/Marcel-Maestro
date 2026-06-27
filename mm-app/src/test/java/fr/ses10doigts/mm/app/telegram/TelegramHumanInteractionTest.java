@@ -21,6 +21,7 @@ import fr.ses10doigts.telegrambots.service.sender.SimpleTelegramSender;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -77,6 +78,7 @@ class TelegramHumanInteractionTest {
     }
 
     @Test
+    @Tag("very-slow")
     void askTimesOutToDeny() {
         // Timeout = 5s, mais on ne résout jamais → la config du test a 5s timeout
         // Pour accélérer le test, on crée une instance avec un timeout très court
