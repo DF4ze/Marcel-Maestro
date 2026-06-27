@@ -1,0 +1,266 @@
+{
+  "info": {
+    "name": "Marcel Maestro - E3-M2 Validation",
+    "description": "Collection Postman de validation manuelle pour E3-M2 : délégation de tâche depuis la conversation, réponse assistant immédiate, isolation par conversationId et non-régression de l'historique. Importer la collection, démarrer l'application sur {{baseUrl}}, puis exécuter les dossiers dans l'ordre.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "projectName", "value": "E3M2 Validation", "type": "string" },
+    { "key": "projectId", "value": "", "type": "string" },
+    { "key": "conversationIdA", "value": "", "type": "string" },
+    { "key": "conversationIdB", "value": "", "type": "string" },
+    { "key": "assistantReplyT1", "value": "", "type": "string" },
+    { "key": "assistantReplyT2", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "Créer projet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('projectId', body.id);",
+                  "pm.test('projectId mémorisé', function () { pm.expect(pm.collectionVariables.get('projectId')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{projectName}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            }
+          }
+        },
+        {
+          "name": "Créer conversation A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('conversationIdA', body.id);",
+                  "pm.test('conversationIdA mémorisé', function () { pm.expect(pm.collectionVariables.get('conversationIdA')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "Créer conversation B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('conversationIdB', body.id);",
+                  "pm.test('conversationIdB mémorisé', function () { pm.expect(pm.collectionVariables.get('conversationIdB')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "T1 - Conversation pure",
+      "item": [
+        {
+          "name": "POST /messages - question simple",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('assistantReplyT1', body.content);",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });",
+                  "pm.test('content non vide', function () { pm.expect(body.content).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Qu'est-ce que Java 21 apporte comme nouveautés ?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdA}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdA}}", "messages"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "T2 - Délégation de tâche",
+      "item": [
+        {
+          "name": "POST /messages - lancer un build Maven",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('assistantReplyT2', body.content);",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });",
+                  "pm.test('content non vide', function () { pm.expect(body.content).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lance un build Maven du projet courant\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdA}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdA}}", "messages"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/tasks - vérifier la queue",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('activeTasks présent', function () { pm.expect(body).to.have.property('activeTasks'); });",
+                  "pm.test('queueSize présent', function () { pm.expect(body).to.have.property('queueSize'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "T3 - Isolation entre conversations",
+      "item": [
+        {
+          "name": "POST /messages sur conversation B - autre délégation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });",
+                  "pm.test('content non vide', function () { pm.expect(body.content).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Lance un build Maven pour cette seconde conversation\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdB}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdB}}", "messages"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "T4 - Historique complet",
+      "item": [
+        {
+          "name": "GET /messages conversation A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('historique non vide', function () { pm.expect(body.length).to.be.greaterThan(0); });",
+                  "pm.test('présence d\\'un message USER', function () { pm.expect(body.some(m => m.role === 'USER')).to.equal(true); });",
+                  "pm.test('présence d\\'un message ASSISTANT', function () { pm.expect(body.some(m => m.role === 'ASSISTANT')).to.equal(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdA}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdA}}", "messages"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

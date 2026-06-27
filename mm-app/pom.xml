@@ -100,13 +100,6 @@
             </plugin>
             <!-- Le spike est tagué "spike" et EXCLU des builds normaux (mvn verify).
                  Pour le lancer : mvn -pl mm-app test -Dgroups=spike (clé requise). -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <excludedGroups>spike</excludedGroups>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
 

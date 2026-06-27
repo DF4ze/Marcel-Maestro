@@ -32,6 +32,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-ai.version>1.1.7</spring-ai.version>
         <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
+        <maven-surefire-plugin.version>3.5.3</maven-surefire-plugin.version>
+        <test.excludedGroups>slow,very-slow,spike</test.excludedGroups>
     </properties>
 
     <modules>
@@ -61,8 +63,37 @@
                     <artifactId>maven-enforcer-plugin</artifactId>
                     <version>${maven-enforcer-plugin.version}</version>
                 </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>${test.excludedGroups}</excludedGroups>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>slow-tests</id>
+            <properties>
+                <test.excludedGroups>very-slow,spike</test.excludedGroups>
+            </properties>
+        </profile>
+        <profile>
+            <id>full-tests</id>
+            <properties>
+                <test.excludedGroups>spike</test.excludedGroups>
+            </properties>
+        </profile>
+    </profiles>
 
 </project>

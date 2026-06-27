@@ -1,5 +1,5 @@
 # Évolution 3 — Marcel parle vraiment
-**Statut : En cours d'implémentation — E3-M0 ✅ · E3-M1 🔄**
+**Statut : En cours d'implémentation — E3-M0 ✅ · E3-M1 ✅ · E3-M2 ✅ · E3-M3 🔄**
 **Date : 2026-06-27**
 **Prérequis : E2 complète — multi-projets, conversations persistées, JdbcChatMemory, HITL enrichi, Telegram E2-M5**
 
@@ -301,7 +301,7 @@ vs 1-5s). Un cache TTL court sera ajouté si des mesures montrent une dégradati
 
 ---
 
-### E3-M1 — ChatAgent batch (réponse LLM réelle) 🔄 `en cours`
+### E3-M1 — ChatAgent batch (réponse LLM réelle) ✅ `done` (2026-06-27)
 **Objectif** : `POST /conversations/{id}/messages` appelle vraiment le LLM et retourne une réponse.
 
 **Livrables** :
@@ -317,7 +317,7 @@ vs 1-5s). Un cache TTL court sera ajouté si des mesures montrent une dégradati
 
 ---
 
-### E3-M2 — Délégation de tâche depuis la conversation
+### E3-M2 — Délégation de tâche depuis la conversation ✅ `done` (2026-06-27)
 **Objectif** : Marcel peut décider qu'une demande doit passer par le moteur task-only.
 
 **Livrables** :
@@ -330,7 +330,7 @@ vs 1-5s). Un cache TTL court sera ajouté si des mesures montrent une dégradati
 
 ---
 
-### E3-M3 — Contexte projet enrichi dans le system prompt
+### E3-M3 — Contexte projet enrichi dans le system prompt 🔄 `en cours`
 **Objectif** : Marcel connaît l'état du projet avant même qu'on lui parle.
 
 **Livrables** :

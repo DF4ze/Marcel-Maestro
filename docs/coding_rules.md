@@ -55,3 +55,26 @@ Utiliser **Lombok** systématiquement pour éliminer le boilerplate : `@Getter`/
   cp application-template.yml application.yml
   # puis édite application.yml avec ses credentials
   ```
+
+## 5. Timeouts — build Maven et outils longs
+
+Le build `mvn verify` de Marcel Maestro est **très long** sur l'environnement cible (Windows,
+Java 21). Un timeout insuffisant provoque des échecs silencieux difficiles à diagnostiquer.
+
+**Règles obligatoires :**
+
+- Tout test JUnit qui invoque un processus externe (ex. `MavenBuildTool`) doit configurer
+  un timeout d'au moins **10 minutes** (600 000 ms) :
+  ```java
+  @Test
+  @Timeout(value = 10, unit = TimeUnit.MINUTES)
+  void monTest() { ... }
+  ```
+- La propriété de timeout de `MavenBuildTool` (et de tout outil d'exécution longue) doit
+  avoir une valeur par défaut **≥ 600 000 ms** dans `application.yml` / `application-template.yml`.
+- Ne jamais laisser un timeout par défaut hérité (souvent 30 s à 2 min) sur une opération Maven.
+- Pour la validation manuelle, compter **5 à 15 minutes** pour un `mvn verify` complet selon
+  les conditions réseau (téléchargement de dépendances) et la charge machine.
+- Pour les agents qui exécutent `mvn verify` en fin de milestone : prévoir explicitement
+  ce délai dans les instructions ; ne pas interpréter une absence de résultat rapide comme
+  un échec.
