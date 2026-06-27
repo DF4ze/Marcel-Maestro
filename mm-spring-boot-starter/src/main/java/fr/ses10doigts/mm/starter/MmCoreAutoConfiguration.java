@@ -28,9 +28,11 @@ import fr.ses10doigts.mm.starter.journal.JournalProperties;
 import fr.ses10doigts.mm.starter.memory.JpaMemoryStore;
 import fr.ses10doigts.mm.starter.memory.MemoryEntryRepository;
 import fr.ses10doigts.mm.starter.prompt.AutonomySystemPromptExtension;
+import fr.ses10doigts.mm.starter.prompt.ProjectSystemPromptExtension;
 import fr.ses10doigts.mm.starter.prompt.ToolsSystemPromptExtension;
 import fr.ses10doigts.mm.core.tool.WorkspaceRegistry;
 import fr.ses10doigts.mm.starter.project.JpaWorkspaceRegistry;
+import fr.ses10doigts.mm.starter.project.ProjectRepository;
 import fr.ses10doigts.mm.starter.project.ProjectWorkspaceRepository;
 import fr.ses10doigts.mm.starter.tool.RememberFactTool;
 import java.nio.file.Path;
@@ -358,6 +360,21 @@ public class MmCoreAutoConfiguration {
         AutonomySystemPromptExtension ext = new AutonomySystemPromptExtension(level);
         log.info("AutonomySystemPromptExtension — niveau d'autonomie {}/10", ext.level());
         return ext;
+    }
+
+    /**
+     * Extension de prompt exposant le projet courant depuis le contexte d'exécution (E3-M0).
+     *
+     * @param contextHolder    propagateur de contexte par thread
+     * @param projectRepository repository des projets
+     * @return extension injectée dans SystemPromptComposer
+     */
+    @Bean
+    @ConditionalOnMissingBean(ProjectSystemPromptExtension.class)
+    public ProjectSystemPromptExtension projectSystemPromptExtension(
+            AgentContextHolder contextHolder,
+            ProjectRepository projectRepository) {
+        return new ProjectSystemPromptExtension(contextHolder, projectRepository);
     }
 
     // AgentLoop

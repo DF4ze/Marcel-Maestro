@@ -20,17 +20,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Tests d'intégration de {@link TelegramSessionService} (E2-M5).
- *
- * <p>Vérifie :</p>
- * <ul>
- *   <li>Résolution du projet actif depuis la session.</li>
- *   <li>Repli sur le premier projet ACTIVE si aucune session active.</li>
- *   <li>Switch de projet actif par chatId.</li>
- *   <li>Recherche de projet par nom / slug insensible à la casse.</li>
- *   <li>Isolation des sessions entre chatIds distincts.</li>
- *   <li>Comptage des conversations ouvertes par projet.</li>
- * </ul>
+ * Tests d'integration de {@link TelegramSessionService}.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -69,28 +59,23 @@ class TelegramSessionServiceTest {
         projectRepository.deleteAll();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Résolution du projet actif
-    // ─────────────────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("getActiveProjectId — retourne empty si aucune session")
+    @DisplayName("getActiveProjectId retourne empty si aucune session")
     void getActiveProjectId_noSession_returnsEmpty() {
         assertThat(sessionService.getActiveProjectId(999L)).isEmpty();
     }
 
     @Test
-    @DisplayName("resolveProjectId — repli sur premier projet ACTIVE si pas de session")
+    @DisplayName("resolveProjectId replie sur un projet actif si pas de session")
     void resolveProjectId_noSession_fallsBackToFirstActiveProject() {
         Optional<String> resolved = sessionService.resolveProjectId(999L);
 
         assertThat(resolved).isPresent();
-        // Doit être l'un des deux projets actifs créés
         assertThat(List.of(projectA.getId(), projectB.getId())).contains(resolved.get());
     }
 
     @Test
-    @DisplayName("resolveProjectId — retourne empty si aucun projet ACTIVE")
+    @DisplayName("resolveProjectId retourne empty si aucun projet actif")
     void resolveProjectId_noActiveProject_returnsEmpty() {
         projectService.archive(projectA.getId());
         projectService.archive(projectB.getId());
@@ -99,78 +84,80 @@ class TelegramSessionServiceTest {
     }
 
     @Test
-    @DisplayName("resolveProjectId — utilise la session active si définie")
+    @DisplayName("resolveProjectId utilise la session active si definie")
     void resolveProjectId_withActiveSession_returnsSessionProject() {
         sessionService.setActiveProject(42L, projectB.getId(), projectB.getName());
 
         Optional<String> resolved = sessionService.resolveProjectId(42L);
 
-        assertThat(resolved).isPresent().contains(projectB.getId());
+        assertThat(resolved).contains(projectB.getId());
     }
 
     @Test
-    @DisplayName("resolveProjectId — session invalidée si projet archivé depuis le switch")
+    @DisplayName("resolveProjectId invalide la session si le projet est archive")
     void resolveProjectId_sessionStale_archivedProject_invalidatedAndFallback() {
-        // Session pointant sur projectA
         sessionService.setActiveProject(42L, projectA.getId(), projectA.getName());
-
-        // projectA est archivé entre-temps
         projectService.archive(projectA.getId());
 
-        // resolveProjectId doit invalider la session et retourner le fallback (projectB)
         Optional<String> resolved = sessionService.resolveProjectId(42L);
 
-        assertThat(resolved).isPresent().contains(projectB.getId());
-        // La session doit avoir été purgée
+        assertThat(resolved).contains(projectB.getId());
         assertThat(sessionService.getActiveProjectId(42L)).isEmpty();
     }
 
     @Test
-    @DisplayName("resolveProjectId — session invalidée si projet supprimé, retourne empty si aucun autre projet")
+    @DisplayName("resolveProjectId retourne empty si plus aucun projet actif")
     void resolveProjectId_sessionStale_deletedProject_returnsEmptyWhenNoOtherActive() {
-        // Uniquement projectA, pas de projectB
         projectService.archive(projectB.getId());
         sessionService.setActiveProject(42L, projectA.getId(), projectA.getName());
-
-        // projectA archivé
         projectService.archive(projectA.getId());
 
-        // Aucun projet ACTIVE restant → empty
         assertThat(sessionService.resolveProjectId(42L)).isEmpty();
-        // Session purgée
         assertThat(sessionService.getActiveProjectId(42L)).isEmpty();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Switch et isolation entre chatIds
-    // ─────────────────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("setActiveProject — switch de projet actif pour un chatId")
+    @DisplayName("setActiveProject vide la conversation active")
     void setActiveProject_updatesSession() {
+        sessionService.setActiveConversationId(1L, "conv-initiale");
         sessionService.setActiveProject(1L, projectA.getId(), projectA.getName());
         assertThat(sessionService.getActiveProjectId(1L)).contains(projectA.getId());
+        assertThat(sessionService.getActiveConversationId(1L)).isEmpty();
 
+        sessionService.setActiveConversationId(1L, "conv-projet-a");
         sessionService.setActiveProject(1L, projectB.getId(), projectB.getName());
         assertThat(sessionService.getActiveProjectId(1L)).contains(projectB.getId());
+        assertThat(sessionService.getActiveConversationId(1L)).isEmpty();
     }
 
     @Test
-    @DisplayName("Sessions isolées — deux chatIds ont des sessions indépendantes")
+    @DisplayName("sessions isolees entre chatIds")
     void sessions_isolatedByChatId() {
         sessionService.setActiveProject(1L, projectA.getId(), projectA.getName());
         sessionService.setActiveProject(2L, projectB.getId(), projectB.getName());
+        sessionService.setActiveConversationId(1L, "conv-a");
+        sessionService.setActiveConversationId(2L, "conv-b");
 
         assertThat(sessionService.getActiveProjectId(1L)).contains(projectA.getId());
         assertThat(sessionService.getActiveProjectId(2L)).contains(projectB.getId());
+        assertThat(sessionService.getActiveConversationId(1L)).contains("conv-a");
+        assertThat(sessionService.getActiveConversationId(2L)).contains("conv-b");
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Recherche par nom
-    // ─────────────────────────────────────────────────────────────────────────
+    @Test
+    @DisplayName("clearActiveConversationId supprime uniquement le chat cible")
+    void activeConversation_clear_removesOnlyTargetChat() {
+        sessionService.setActiveConversationId(1L, "conv-a");
+        sessionService.setActiveConversationId(2L, "conv-b");
+
+        sessionService.clearActiveConversationId(1L);
+
+        assertThat(sessionService.getActiveConversationId(1L)).isEmpty();
+        assertThat(sessionService.getActiveConversationId(2L)).contains("conv-b");
+    }
 
     @Test
-    @DisplayName("findActiveProjectByName — correspondance exacte insensible à la casse")
+    @DisplayName("findActiveProjectByName matche nom exact insensible a la casse")
     void findActiveProjectByName_caseInsensitiveMatch() {
         Optional<ProjectEntity> found = sessionService.findActiveProjectByName("projet alpha");
 
@@ -179,9 +166,8 @@ class TelegramSessionServiceTest {
     }
 
     @Test
-    @DisplayName("findActiveProjectByName — correspondance sur slug sanitisé")
+    @DisplayName("findActiveProjectByName matche le slug")
     void findActiveProjectByName_matchesSanitizedName() {
-        // "Projet Alpha" → slug "projet-alpha"
         Optional<ProjectEntity> found = sessionService.findActiveProjectByName("projet-alpha");
 
         assertThat(found).isPresent();
@@ -189,7 +175,7 @@ class TelegramSessionServiceTest {
     }
 
     @Test
-    @DisplayName("findActiveProjectByName — projet archivé non retourné")
+    @DisplayName("findActiveProjectByName ignore un projet archive")
     void findActiveProjectByName_archivedProject_notFound() {
         projectService.archive(projectA.getId());
 
@@ -197,23 +183,38 @@ class TelegramSessionServiceTest {
     }
 
     @Test
-    @DisplayName("findActiveProjectByName — nom inconnu retourne empty")
+    @DisplayName("findActiveProjectByName retourne empty si inconnu")
     void findActiveProjectByName_unknownName_returnsEmpty() {
         assertThat(sessionService.findActiveProjectByName("Projet Inexistant")).isEmpty();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Comptage des conversations ouvertes
-    // ─────────────────────────────────────────────────────────────────────────
+    @Test
+    @DisplayName("findActiveProjectsByQuery supporte prefixe et contient")
+    void findActiveProjectsByQuery_supportsPrefixAndContains() {
+        List<ProjectEntity> byPrefix = sessionService.findActiveProjectsByQuery("projet al", 10);
+        List<ProjectEntity> byContains = sessionService.findActiveProjectsByQuery("beta", 10);
+
+        assertThat(byPrefix).extracting(ProjectEntity::getId).contains(projectA.getId());
+        assertThat(byContains).extracting(ProjectEntity::getId).contains(projectB.getId());
+    }
 
     @Test
-    @DisplayName("countOpenConversations — retourne 0 si aucune conversation")
+    @DisplayName("findActiveProjectsByQuery vide retourne les projets actifs")
+    void findActiveProjectsByQuery_blank_returnsActiveProjects() {
+        List<ProjectEntity> results = sessionService.findActiveProjectsByQuery("", 10);
+
+        assertThat(results).extracting(ProjectEntity::getId)
+                .contains(projectA.getId(), projectB.getId());
+    }
+
+    @Test
+    @DisplayName("countOpenConversations retourne zero si aucune conversation")
     void countOpenConversations_none_returnsZero() {
         assertThat(sessionService.countOpenConversations(projectA.getId())).isZero();
     }
 
     @Test
-    @DisplayName("countOpenConversations — compte correctement les conversations ouvertes")
+    @DisplayName("countOpenConversations compte correctement")
     void countOpenConversations_returnsCorrectCount() {
         conversationService.startConversation(projectA.getId());
         conversationService.startConversation(projectA.getId());
@@ -224,7 +225,7 @@ class TelegramSessionServiceTest {
     }
 
     @Test
-    @DisplayName("countOpenConversationsByProjects — une seule requête batch pour plusieurs projets")
+    @DisplayName("countOpenConversationsByProjects agrege en batch")
     void countOpenConversationsByProjects_batchQuery() {
         conversationService.startConversation(projectA.getId());
         conversationService.startConversation(projectA.getId());
@@ -234,35 +235,41 @@ class TelegramSessionServiceTest {
                 List.of(projectA.getId(), projectB.getId()));
 
         assertThat(counts).containsEntry(projectA.getId(), 2L)
-                          .containsEntry(projectB.getId(), 1L);
+                .containsEntry(projectB.getId(), 1L);
     }
 
     @Test
-    @DisplayName("countOpenConversationsByProjects — projet sans conversation absent de la map")
+    @DisplayName("countOpenConversationsByProjects omet les projets sans conversation")
     void countOpenConversationsByProjects_projectWithNoConversations_absentFromMap() {
-        // Aucune conversation créée pour projectA
         conversationService.startConversation(projectB.getId());
 
         Map<String, Long> counts = sessionService.countOpenConversationsByProjects(
                 List.of(projectA.getId(), projectB.getId()));
 
-        // projectA absent (0 conversation = non retourné par GROUP BY)
         assertThat(counts).doesNotContainKey(projectA.getId())
-                          .containsEntry(projectB.getId(), 1L);
+                .containsEntry(projectB.getId(), 1L);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // listActiveProjects
-    // ─────────────────────────────────────────────────────────────────────────
+    @Test
+    @DisplayName("switchSuggestions se resolvent par index")
+    void switchSuggestions_resolveByIndex() {
+        sessionService.setSwitchSuggestions(42L, List.of(projectA.getId(), projectB.getId()));
+
+        assertThat(sessionService.resolveSwitchSuggestion(42L, 0))
+                .hasValueSatisfying(project -> assertThat(project.getId()).isEqualTo(projectA.getId()));
+        assertThat(sessionService.resolveSwitchSuggestion(42L, 1))
+                .hasValueSatisfying(project -> assertThat(project.getId()).isEqualTo(projectB.getId()));
+        assertThat(sessionService.resolveSwitchSuggestion(42L, 2)).isEmpty();
+    }
 
     @Test
-    @DisplayName("listActiveProjects — retourne uniquement les projets ACTIVE")
+    @DisplayName("listActiveProjects retourne uniquement les projets actifs")
     void listActiveProjects_returnsOnlyActiveProjects() {
         projectService.archive(projectA.getId());
 
         List<ProjectEntity> active = sessionService.listActiveProjects();
 
         assertThat(active).hasSize(1);
-        assertThat(active.get(0).getId()).isEqualTo(projectB.getId());
+        assertThat(active.getFirst().getId()).isEqualTo(projectB.getId());
     }
 }

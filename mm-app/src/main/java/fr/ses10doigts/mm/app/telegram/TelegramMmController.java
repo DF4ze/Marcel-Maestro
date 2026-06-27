@@ -9,11 +9,14 @@ import fr.ses10doigts.mm.core.orchestration.Dispatcher;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
 import fr.ses10doigts.mm.starter.conversation.ConversationEntity;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
+import fr.ses10doigts.telegrambots.model.TelegramButtonView;
 import fr.ses10doigts.telegrambots.model.TelegramUpdateContext;
+import fr.ses10doigts.telegrambots.model.TelegramView;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.CallbackQuery;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.Chat;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.Command;
 import fr.ses10doigts.telegrambots.service.poller.handler.annot.TelegramController;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -50,6 +53,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 @ConditionalOnProperty(prefix = "telegram", name = "enabled", havingValue = "true")
 @Slf4j
 public class TelegramMmController {
+
+    private static final String CB_SWITCH_PREFIX = "switch_project_";
+    private static final int MAX_SWITCH_SUGGESTIONS = 6;
 
     private final ObjectProvider<Dispatcher> dispatcherProvider;
     private final ObjectProvider<TelegramHumanInteraction> telegramProvider;
@@ -89,6 +95,9 @@ public class TelegramMmController {
      * (via {@link TelegramSessionService#resolveProjectId}). Si aucun projet
      * n'est disponible, un message d'erreur est retourné.</p>
      *
+     * <p>E3-M0 : la conversation active du chatId est réutilisée tant qu'elle
+     * n'est pas réinitialisée via {@code /reset}.</p>
+     *
      * @param ctx contexte de l'update Telegram
      * @return accusé de réception avec le taskId court
      */
@@ -116,18 +125,25 @@ public class TelegramMmController {
         }
 
         String projectId = resolvedProjectId.get();
-        String conversationId;
+        String conversationId = sessionService.getActiveConversationId(chatId).orElse(null);
 
         ConversationService conversationService = conversationServiceProvider.getIfAvailable();
         if (conversationService != null) {
-            try {
-                ConversationEntity conv = conversationService.startConversation(projectId);
-                conversationId = conv.getId();
-                log.debug("Telegram chat — conversationId injecté={}, projectId={}", conversationId, projectId);
-            } catch (Exception e) {
-                log.warn("Telegram chat — impossible de créer la conversation pour projectId={} : {}. Fallback sur chatId.",
-                        projectId, e.getMessage());
-                conversationId = chatId != null ? String.valueOf(chatId) : "telegram";
+            if (conversationId == null) {
+                try {
+                    ConversationEntity conv = conversationService.startConversation(projectId);
+                    conversationId = conv.getId();
+                    sessionService.setActiveConversationId(chatId, conversationId);
+                    log.debug("Telegram chat — nouvelle conversationId injectée={}, projectId={}",
+                            conversationId, projectId);
+                } catch (Exception e) {
+                    log.warn("Telegram chat — impossible de créer la conversation pour projectId={} : {}. Fallback sur chatId.",
+                            projectId, e.getMessage());
+                    conversationId = chatId != null ? String.valueOf(chatId) : "telegram";
+                }
+            } else {
+                log.info("Telegram chat — réutilisation conversation active chatId={}, conversationId={}",
+                        chatId, conversationId);
             }
         } else {
             log.warn("Telegram chat — ConversationService absent. Fallback sur chatId comme conversationId.");
@@ -149,6 +165,20 @@ public class TelegramMmController {
 
         return String.format("⏳ Message reçu (tâche %s).\nJe traite, tu recevras la réponse dans un instant…",
                 truncate(taskId, 12));
+    }
+
+    /**
+     * Commande {@code /reset} — oublie la conversation active du chat courant.
+     *
+     * @param ctx contexte de l'update Telegram
+     * @return confirmation de réinitialisation
+     */
+    @Command(value = "/reset", description = "Réinitialiser la conversation active")
+    public String reset(TelegramUpdateContext ctx) {
+        Long chatId = ctx.getChatId();
+        sessionService.clearActiveConversationId(chatId);
+        log.info("Telegram /reset — chatId={}", chatId);
+        return "✅ Conversation réinitialisée. Le prochain message démarrera une nouvelle conversation.";
     }
 
     // ── Commandes ────────────────────────────────────────────────────────────
@@ -263,29 +293,34 @@ public class TelegramMmController {
      * @return confirmation du switch ou message d'erreur
      */
     @Command(value = "/switch", description = "Changer de projet actif : /switch <nom>")
-    public String switchProject(TelegramUpdateContext ctx) {
-        if (ctx.getArgs() == null || ctx.getArgs().isEmpty()) {
-            return "Usage : /switch <nom du projet>";
-        }
-
-        String nameArg = String.join(" ", ctx.getArgs());
+    public Object switchProject(TelegramUpdateContext ctx) {
         Long chatId = ctx.getChatId();
+        String nameArg = ctx.getArgs() == null || ctx.getArgs().isEmpty()
+                ? ""
+                : String.join(" ", ctx.getArgs()).trim();
 
-        Optional<ProjectEntity> found = sessionService.findActiveProjectByName(nameArg);
-
-        if (found.isEmpty()) {
-            log.info("Telegram /switch — chatId={}, projet '{}' introuvable ou non ACTIVE", chatId, nameArg);
-            return String.format("❓ Projet '%s' introuvable ou non actif.\nUtilise /projects pour voir les projets disponibles.", nameArg);
+        if (!nameArg.isBlank()) {
+            Optional<ProjectEntity> exact = sessionService.findActiveProjectByName(nameArg);
+            if (exact.isPresent()) {
+                return activateProject(chatId, exact.get());
+            }
         }
 
-        ProjectEntity project = found.get();
-        sessionService.setActiveProject(chatId, project.getId(), project.getName());
+        List<ProjectEntity> candidates = sessionService.findActiveProjectsByQuery(nameArg, MAX_SWITCH_SUGGESTIONS);
+        if (candidates.isEmpty()) {
+            log.info("Telegram /switch — chatId={}, aucune suggestion pour '{}'", chatId, nameArg);
+            return nameArg.isBlank()
+                    ? "❓ Aucun projet actif disponible."
+                    : String.format("❓ Aucun projet actif ne ressemble à '%s'.\nUtilise /projects pour voir les projets disponibles.", nameArg);
+        }
+        if (candidates.size() == 1) {
+            log.info("Telegram /switch — chatId={}, match approximatif unique pour '{}': {}",
+                    chatId, nameArg, candidates.getFirst().getName());
+            return activateProject(chatId, candidates.getFirst());
+        }
 
-        long openConvCount = sessionService.countOpenConversations(project.getId());
-        String convLabel = openConvCount == 1 ? "1 conversation ouverte" :
-                openConvCount + " conversations ouvertes";
-
-        return String.format("✅ Projet actif : *%s*\n%s", project.getName(), convLabel);
+        sessionService.setSwitchSuggestions(chatId, candidates.stream().map(ProjectEntity::getId).toList());
+        return buildSwitchSuggestionView(nameArg, candidates);
     }
 
     // ── Callbacks HITL ───────────────────────────────────────────────────────
@@ -352,6 +387,36 @@ public class TelegramMmController {
         return resolveHitl(ConsentDecision.ALLOW_LARGE_ALWAYS);
     }
 
+    @CallbackQuery(CB_SWITCH_PREFIX + "0")
+    public String onSwitch0(TelegramUpdateContext ctx) {
+        return resolveSwitchSuggestion(ctx, 0);
+    }
+
+    @CallbackQuery(CB_SWITCH_PREFIX + "1")
+    public String onSwitch1(TelegramUpdateContext ctx) {
+        return resolveSwitchSuggestion(ctx, 1);
+    }
+
+    @CallbackQuery(CB_SWITCH_PREFIX + "2")
+    public String onSwitch2(TelegramUpdateContext ctx) {
+        return resolveSwitchSuggestion(ctx, 2);
+    }
+
+    @CallbackQuery(CB_SWITCH_PREFIX + "3")
+    public String onSwitch3(TelegramUpdateContext ctx) {
+        return resolveSwitchSuggestion(ctx, 3);
+    }
+
+    @CallbackQuery(CB_SWITCH_PREFIX + "4")
+    public String onSwitch4(TelegramUpdateContext ctx) {
+        return resolveSwitchSuggestion(ctx, 4);
+    }
+
+    @CallbackQuery(CB_SWITCH_PREFIX + "5")
+    public String onSwitch5(TelegramUpdateContext ctx) {
+        return resolveSwitchSuggestion(ctx, 5);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     /**
@@ -370,6 +435,42 @@ public class TelegramMmController {
         return resolved
                 ? String.format("✅ Décision enregistrée : %s", decision)
                 : "⏱ Demande expirée ou déjà traitée.";
+    }
+
+    private String resolveSwitchSuggestion(TelegramUpdateContext ctx, int index) {
+        Long chatId = ctx.getChatId();
+        Optional<ProjectEntity> project = sessionService.resolveSwitchSuggestion(chatId, index);
+        if (project.isEmpty()) {
+            return "❓ Cette suggestion n'est plus disponible. Relance /switch.";
+        }
+        return activateProject(chatId, project.get());
+    }
+
+    private String activateProject(Long chatId, ProjectEntity project) {
+        sessionService.setActiveProject(chatId, project.getId(), project.getName());
+
+        long openConvCount = sessionService.countOpenConversations(project.getId());
+        String convLabel = openConvCount == 1 ? "1 conversation ouverte" :
+                openConvCount + " conversations ouvertes";
+
+        return String.format("✅ Projet actif : *%s*\n%s", project.getName(), convLabel);
+    }
+
+    private TelegramView buildSwitchSuggestionView(String query, List<ProjectEntity> candidates) {
+        String text = query == null || query.isBlank()
+                ? "Sélectionne le projet actif :"
+                : String.format("Plusieurs projets ressemblent à '%s'. Sélectionne le bon :", query);
+
+        List<List<TelegramButtonView>> buttons = new ArrayList<>();
+        for (int i = 0; i < candidates.size(); i++) {
+            ProjectEntity project = candidates.get(i);
+            buttons.add(List.of(new TelegramButtonView(project.getName(), CB_SWITCH_PREFIX + i)));
+        }
+
+        return TelegramView.builder()
+                .text(text)
+                .buttons(buttons)
+                .build();
     }
 
     /**

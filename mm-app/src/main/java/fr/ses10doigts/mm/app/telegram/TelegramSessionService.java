@@ -5,6 +5,7 @@ import fr.ses10doigts.mm.starter.conversation.ConversationStatus;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.mm.starter.project.ProjectRepository;
 import fr.ses10doigts.mm.starter.project.ProjectStatus;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,6 +49,17 @@ public class TelegramSessionService {
      */
     private final Map<Long, String> activeSessions = new ConcurrentHashMap<>();
 
+    /**
+     * Conversations actives en mémoire : chatId Telegram → conversationId MM.
+     * {@link ConcurrentHashMap} pour la sécurité thread (virtual threads).
+     */
+    private final Map<Long, String> activeConversationIds = new ConcurrentHashMap<>();
+
+    /**
+     * Suggestions de switch en attente : chatId Telegram → liste ordonnée de projectId.
+     */
+    private final Map<Long, List<String>> switchSuggestions = new ConcurrentHashMap<>();
+
     // ── Lecture ──────────────────────────────────────────────────────────────
 
     /**
@@ -89,6 +101,8 @@ public class TelegramSessionService {
             }
             // Projet archivé ou supprimé depuis la mise en session — invalider
             activeSessions.remove(chatId);
+            clearActiveConversationId(chatId);
+            clearSwitchSuggestions(chatId);
             log.info("Session Telegram invalidée — chatId={}, projectId={} n'est plus ACTIVE",
                     chatId, projectId);
         }
@@ -114,8 +128,49 @@ public class TelegramSessionService {
      */
     public void setActiveProject(Long chatId, String projectId, String projectName) {
         activeSessions.put(chatId, projectId);
+        clearActiveConversationId(chatId);
+        clearSwitchSuggestions(chatId);
         log.info("Switch de projet actif Telegram — chatId={}, projectId={}, nom='{}'",
                 chatId, projectId, projectName);
+    }
+
+    /**
+     * Retourne la conversation active pour un chatId, si elle est définie.
+     *
+     * @param chatId l'identifiant du chat Telegram
+     * @return l'ID de conversation active, ou {@link Optional#empty()} si aucune n'est définie
+     */
+    public Optional<String> getActiveConversationId(Long chatId) {
+        String conversationId = activeConversationIds.get(chatId);
+        log.debug("Session Telegram — chatId={} → conversationId={}", chatId, conversationId);
+        return Optional.ofNullable(conversationId);
+    }
+
+    /**
+     * Définit la conversation active pour un chatId.
+     *
+     * @param chatId         l'identifiant du chat Telegram
+     * @param conversationId l'ID de conversation à associer
+     */
+    public void setActiveConversationId(Long chatId, String conversationId) {
+        activeConversationIds.put(chatId, conversationId);
+        log.info("Conversation active Telegram définie — chatId={}, conversationId={}",
+                chatId, conversationId);
+    }
+
+    /**
+     * Supprime la conversation active d'un chatId.
+     *
+     * @param chatId l'identifiant du chat Telegram
+     */
+    public void clearActiveConversationId(Long chatId) {
+        String removed = activeConversationIds.remove(chatId);
+        if (removed != null) {
+            log.info("Conversation active Telegram réinitialisée — chatId={}, conversationId={}",
+                    chatId, removed);
+        } else {
+            log.debug("Conversation active Telegram déjà absente — chatId={}", chatId);
+        }
     }
 
     // ── Recherche ────────────────────────────────────────────────────────────
@@ -144,6 +199,39 @@ public class TelegramSessionService {
         return activeProjects.stream()
                 .filter(p -> p.getSanitizedName().equalsIgnoreCase(nameOrSlug))
                 .findFirst();
+    }
+
+    /**
+     * Recherche des projets actifs approchants à partir d'un texte libre.
+     *
+     * <p>Ordre de priorité :</p>
+     * <ol>
+     *   <li>égalité exacte sur {@code name} ou {@code sanitizedName}</li>
+     *   <li>préfixe sur {@code name} ou {@code sanitizedName}</li>
+     *   <li>contenance sur {@code name} ou {@code sanitizedName}</li>
+     * </ol>
+     *
+     * @param query texte saisi par l'utilisateur ; vide = tous les projets actifs
+     * @param limit nombre maximal de résultats
+     * @return liste ordonnée des projets approchants
+     */
+    public List<ProjectEntity> findActiveProjectsByQuery(String query, int limit) {
+        String normalized = normalizeQuery(query);
+        List<ProjectEntity> activeProjects = projectRepository.findAllByStatus(ProjectStatus.ACTIVE);
+        if (normalized.isBlank()) {
+            return activeProjects.stream()
+                    .sorted(Comparator.comparing(ProjectEntity::getName, String.CASE_INSENSITIVE_ORDER))
+                    .limit(limit)
+                    .toList();
+        }
+
+        return activeProjects.stream()
+                .filter(project -> computeMatchRank(project, normalized) < Integer.MAX_VALUE)
+                .sorted(Comparator
+                        .comparingInt((ProjectEntity project) -> computeMatchRank(project, normalized))
+                        .thenComparing(ProjectEntity::getName, String.CASE_INSENSITIVE_ORDER))
+                .limit(limit)
+                .toList();
     }
 
     // ── Données pour /projects ────────────────────────────────────────────────
@@ -187,5 +275,63 @@ public class TelegramSessionService {
      */
     public long countOpenConversations(String projectId) {
         return conversationRepository.countByProjectIdAndStatus(projectId, ConversationStatus.OPEN);
+    }
+
+    /**
+     * Enregistre une liste ordonnée de suggestions de switch pour un chat.
+     *
+     * @param chatId identifiant du chat Telegram
+     * @param projectIds IDs de projets proposés dans l'ordre d'affichage
+     */
+    public void setSwitchSuggestions(Long chatId, List<String> projectIds) {
+        switchSuggestions.put(chatId, List.copyOf(projectIds));
+        log.debug("Suggestions de switch enregistrées — chatId={}, count={}", chatId, projectIds.size());
+    }
+
+    /**
+     * Supprime les suggestions de switch en attente pour un chat.
+     *
+     * @param chatId identifiant du chat Telegram
+     */
+    public void clearSwitchSuggestions(Long chatId) {
+        switchSuggestions.remove(chatId);
+        log.debug("Suggestions de switch effacées — chatId={}", chatId);
+    }
+
+    /**
+     * Résout un projet à partir de son index dans la liste de suggestions d'un chat.
+     *
+     * @param chatId identifiant du chat Telegram
+     * @param index index du bouton cliqué
+     * @return projet résolu si l'index est valide et que le projet existe toujours
+     */
+    public Optional<ProjectEntity> resolveSwitchSuggestion(Long chatId, int index) {
+        List<String> suggestions = switchSuggestions.get(chatId);
+        if (suggestions == null || index < 0 || index >= suggestions.size()) {
+            log.debug("Suggestion de switch introuvable — chatId={}, index={}", chatId, index);
+            return Optional.empty();
+        }
+        String projectId = suggestions.get(index);
+        return projectRepository.findById(projectId)
+                .filter(project -> project.getStatus() == ProjectStatus.ACTIVE);
+    }
+
+    private String normalizeQuery(String query) {
+        return query == null ? "" : query.strip().toLowerCase();
+    }
+
+    private int computeMatchRank(ProjectEntity project, String normalizedQuery) {
+        String name = project.getName() == null ? "" : project.getName().toLowerCase();
+        String slug = project.getSanitizedName() == null ? "" : project.getSanitizedName().toLowerCase();
+        if (name.equals(normalizedQuery) || slug.equals(normalizedQuery)) {
+            return 0;
+        }
+        if (name.startsWith(normalizedQuery) || slug.startsWith(normalizedQuery)) {
+            return 1;
+        }
+        if (name.contains(normalizedQuery) || slug.contains(normalizedQuery)) {
+            return 2;
+        }
+        return Integer.MAX_VALUE;
     }
 }

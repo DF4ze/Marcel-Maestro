@@ -29,7 +29,7 @@ import org.springframework.test.context.ActiveProfiles;
  *   <li>Isolation mémoire entre conversations (même projet, partitions séparées).</li>
  *   <li>Persistance JDBC (messages lisibles depuis {@link JdbcChatMemoryRepository} directement).</li>
  *   <li>Rejet des projets archivés ({@link ProjectArchivedConversationException}).</li>
- *   <li>Injection correcte du {@code TaskMessage} depuis {@link TelegramMmController} (E2-M2).</li>
+ *   <li>Injection correcte du {@code TaskMessage} depuis { TelegramMmController} (E2-M2).</li>
  * </ul>
  *
  * <p>La datasource SQLite in-memory partagée ({@code file:testdb-app?mode=memory&cache=shared})
@@ -176,6 +176,21 @@ class ConversationServiceTest {
 
         List<String> ids = jdbcChatMemoryRepository.findConversationIds();
         assertThat(ids).contains(conv1.getId(), conv2.getId());
+    }
+
+    @Test
+    @DisplayName("Suppression conversation — la mémoire Spring AI est purgée avant suppression DB")
+    void deleteConversation_clearsChatMemory() {
+        ProjectEntity project = projectService.create("Projet Delete Conv");
+        ConversationEntity conv = conversationService.startConversation(project.getId());
+        conversationService.addMessage(conv.getId(), "Message à supprimer");
+
+        assertThat(jdbcChatMemoryRepository.findByConversationId(conv.getId())).hasSize(1);
+
+        conversationService.delete(conv.getId());
+
+        assertThat(conversationRepository.findById(conv.getId())).isEmpty();
+        assertThat(jdbcChatMemoryRepository.findByConversationId(conv.getId())).isEmpty();
     }
 
     // ─────────────────────────────────────────────────────────────────────────

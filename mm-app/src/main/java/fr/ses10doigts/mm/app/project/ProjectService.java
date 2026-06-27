@@ -1,5 +1,7 @@
 package fr.ses10doigts.mm.app.project;
 
+import fr.ses10doigts.mm.starter.conversation.ConversationEntity;
+import fr.ses10doigts.mm.starter.conversation.ConversationRepository;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.mm.starter.project.ProjectRepository;
 import fr.ses10doigts.mm.starter.project.ProjectStatus;
@@ -17,6 +19,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +43,8 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final ProjectWorkspaceRepository workspaceRepository;
+    private final ConversationRepository conversationRepository;
+    private final ChatMemory chatMemory;
     private final WorkspaceProperties workspaceProperties;
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -185,6 +190,15 @@ public class ProjectService {
         ProjectEntity project = findOrThrow(id);
         String workspacePath = project.getWorkspacePath();
         String name = project.getName();
+        List<ConversationEntity> conversations = conversationRepository.findAllByProjectId(id);
+
+        log.info("Suppression projet — purge mémoire de {} conversation(s), projectId={}",
+                conversations.size(), id);
+        conversations.forEach(conversation -> {
+            log.debug("Purge ChatMemory projet — projectId={}, conversationId={}",
+                    id, conversation.getId());
+            chatMemory.clear(conversation.getId());
+        });
 
         // Suppression DB — le CASCADE sur project_workspace nettoie les workspaces externes.
         workspaceRepository.deleteAllByProjectId(id);

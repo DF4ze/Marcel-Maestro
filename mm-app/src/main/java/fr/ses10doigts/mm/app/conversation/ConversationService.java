@@ -202,6 +202,23 @@ public class ConversationService {
         return newConv;
     }
 
+    /**
+     * Supprime une conversation et purge sa mémoire Spring AI associée avant suppression DB.
+     *
+     * @param conversationId l'ID de la conversation à supprimer
+     * @throws ConversationNotFoundException si la conversation n'existe pas
+     */
+    @Transactional
+    public void delete(String conversationId) {
+        ConversationEntity conversation = getConversation(conversationId);
+        log.info("Suppression conversation — conversationId={}, projectId={}",
+                conversationId, conversation.getProjectId());
+        log.debug("Purge ChatMemory avant suppression — conversationId={}", conversationId);
+        chatMemory.clear(conversationId);
+        conversationRepository.delete(conversation);
+        log.info("Conversation supprimée — conversationId={}", conversationId);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Helper
     // ─────────────────────────────────────────────────────────────────────────

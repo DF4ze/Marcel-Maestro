@@ -1,0 +1,725 @@
+{
+  "info": {
+    "name": "Marcel Maestro - E3-M0 Validation",
+    "description": "Collection Postman de validation manuelle pour E3-M0 : continuité conversation Telegram, purge de SPRING_AI_CHAT_MEMORY, contexte projet dans le system prompt. Importer la collection, démarrer l'application sur {{baseUrl}}, puis dérouler les dossiers dans l'ordre.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "projectNameA",
+      "value": "E3M0 Validation A",
+      "type": "string"
+    },
+    {
+      "key": "projectNameB",
+      "value": "E3M0 Validation B",
+      "type": "string"
+    },
+    {
+      "key": "projectIdA",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectIdB",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "conversationIdA1",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "conversationIdA2",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "promptTaskId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0 - Santé",
+      "item": [
+        {
+          "name": "GET /api/tasks - application disponible",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('activeTasks présent', function () { pm.expect(body).to.have.property('activeTasks'); });",
+                  "pm.test('queueSize présent', function () { pm.expect(body).to.have.property('queueSize'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            },
+            "description": "Health-check minimal du backend avant de dérouler le scénario."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 - Setup projets",
+      "item": [
+        {
+          "name": "Créer Projet A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('projectIdA', body.id);",
+                  "pm.test('projectIdA mémorisé', function () { pm.expect(pm.collectionVariables.get('projectIdA')).to.be.a('string').and.not.empty; });",
+                  "console.log('projectIdA =', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{projectNameA}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Créer Projet B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('projectIdB', body.id);",
+                  "pm.test('projectIdB mémorisé', function () { pm.expect(pm.collectionVariables.get('projectIdB')).to.be.a('string').and.not.empty; });",
+                  "console.log('projectIdB =', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{projectNameB}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Lister projets actifs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Projet A présent', function () { pm.expect(body.map(p => p.id)).to.include(pm.collectionVariables.get('projectIdA')); });",
+                  "pm.test('Projet B présent', function () { pm.expect(body.map(p => p.id)).to.include(pm.collectionVariables.get('projectIdB')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Validation REST mémoire / conversations",
+      "description": "Cette section valide l'isolation de SPRING_AI_CHAT_MEMORY entre conversations, puis prépare les identifiants utiles pour vérifier la purge après suppression du projet.",
+      "item": [
+        {
+          "name": "Créer conversation A1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('conversationIdA1', body.id);",
+                  "pm.test('conversationIdA1 mémorisé', function () { pm.expect(pm.collectionVariables.get('conversationIdA1')).to.be.a('string').and.not.empty; });",
+                  "console.log('conversationIdA1 =', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ajouter message 1 dans A1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"E3-M0 message 1 pour A1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA1}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA1}}",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ajouter message 2 dans A1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"E3-M0 message 2 pour A1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA1}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA1}}",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Vérifier A1 contient 2 messages",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('A1 contient 2 messages', function () { pm.expect(body.length).to.equal(2); });",
+                  "pm.test('messages USER attendus', function () { pm.expect(body.map(m => m.type)).to.eql(['USER', 'USER']); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA1}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA1}}",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Créer conversation A2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('conversationIdA2', body.id);",
+                  "pm.test('conversationIdA2 mémorisé', function () { pm.expect(pm.collectionVariables.get('conversationIdA2')).to.be.a('string').and.not.empty; });",
+                  "console.log('conversationIdA2 =', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ajouter message 1 dans A2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"E3-M0 message unique pour A2\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA2}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA2}}",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Vérifier A2 contient 1 message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('A2 contient 1 message', function () { pm.expect(body.length).to.equal(1); });",
+                  "pm.test('message attendu', function () { pm.expect(body[0].content).to.equal('E3-M0 message unique pour A2'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA2}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA2}}",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Re-vérifier A1 est intacte",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('A1 contient toujours 2 messages', function () { pm.expect(body.length).to.equal(2); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}/conversations/{{conversationIdA1}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}",
+                "conversations",
+                "{{conversationIdA1}}",
+                "messages"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Purge mémoire à la suppression projet",
+      "description": "L'API ne permet pas d'interroger directement la table SPRING_AI_CHAT_MEMORY. La suppression du projet se valide via REST, puis la purge effective se vérifie en SQL avec les conversationId mémorisés.",
+      "item": [
+        {
+          "name": "Supprimer Projet A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204 No Content', function () { pm.response.to.have.status(204); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}"
+              ]
+            },
+            "description": "Déclenche la purge applicative de la mémoire chat pour toutes les conversations du projet avant suppression DB."
+          }
+        },
+        {
+          "name": "Confirmer que Projet A est supprimé",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', function () { pm.response.to.have.status(404); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdA}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Etape manuelle SQL - vérifier la purge SPRING_AI_CHAT_MEMORY",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            },
+            "description": "Action manuelle hors Postman. Exécuter en base SQLite :\n\nSELECT conversation_id, content\nFROM SPRING_AI_CHAT_MEMORY\nWHERE conversation_id IN ('{{conversationIdA1}}', '{{conversationIdA2}}');\n\nRésultat attendu : 0 ligne.\n\nTu peux aussi vérifier avant suppression si besoin :\nSELECT conversation_id, COUNT(*)\nFROM SPRING_AI_CHAT_MEMORY\nGROUP BY conversation_id;"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Contexte projet dans le system prompt",
+      "description": "Cette partie prépare un appel agentique avec projectId. La vérification finale se fait dans les logs ou en debug, car le system prompt n'est pas exposé par l'API.",
+      "item": [
+        {
+          "name": "Soumettre une tâche Cortex avec Projet B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('202 Accepted', function () { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('promptTaskId', body.taskId);",
+                  "pm.test('taskId mémorisé', function () { pm.expect(pm.collectionVariables.get('promptTaskId')).to.be.a('string').and.not.empty; });",
+                  "console.log('promptTaskId =', body.taskId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Dis simplement bonjour et analyse le contexte du projet\",\n  \"projectId\": \"{{projectIdB}}\",\n  \"conversationId\": \"postman-e3m0-prompt\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            },
+            "description": "Prépare un contexte AgentContext avec projectId. La vérification utile est dans les logs du backend."
+          }
+        },
+        {
+          "name": "Etape manuelle logs - vérifier ProjectSystemPromptExtension",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{promptTaskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "{{promptTaskId}}"
+              ]
+            },
+            "description": "Action manuelle. Pendant ou juste après la tâche précédente, vérifier dans les logs backend que l'extension projet s'active.\n\nAttendus :\n- log contenant 'ProjectSystemPromptExtension'\n- projectId = {{projectIdB}}\n- le nom du projet '{{projectNameB}}'\n- le workspacePath du projet chargé\n\nOption debug plus fiable : breakpoint dans ProjectSystemPromptExtension.contribution()."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Telegram continuité conversation (manuel)",
+      "description": "Postman ne pilote pas Telegram. Cette section sert de check-list de validation à dérouler en parallèle de l'application et de la base.",
+      "item": [
+        {
+          "name": "Etape manuelle - même chatId, même conversationId",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdB}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdB}}",
+                "conversations"
+              ]
+            },
+            "description": "Action manuelle Telegram :\n1. Dans Telegram, envoyer /switch {{projectNameB}}\n2. Envoyer un premier message libre\n3. Envoyer un second message libre\n4. Appeler ensuite cette requête pour lister les conversations du projet\n\nAttendu : une seule nouvelle conversation créée côté projet, pas deux.\n\nValidation plus précise possible en DB :\nSELECT id, project_id, started_at FROM conversation WHERE project_id='{{projectIdB}}' ORDER BY started_at DESC;"
+          }
+        },
+        {
+          "name": "Etape manuelle - /reset force une nouvelle conversation",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdB}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdB}}",
+                "conversations"
+              ]
+            },
+            "description": "Action manuelle Telegram :\n1. Envoyer /reset\n2. Envoyer un nouveau message libre\n3. Réexécuter cette requête\n\nAttendu : une conversation supplémentaire apparaît après /reset, car le conversationId actif a été oublié."
+          }
+        },
+        {
+          "name": "Etape manuelle - isolation entre deux chats Telegram",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdB}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdB}}",
+                "conversations"
+              ]
+            },
+            "description": "Action manuelle Telegram :\n1. Depuis un second compte ou second chat, faire /switch {{projectNameB}}\n2. Envoyer un message libre\n3. Comparer les conversations créées avec celles du premier chat\n\nAttendu : le second chat obtient son propre conversationId actif, distinct de celui du premier chat."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 - Nettoyage optionnel",
+      "item": [
+        {
+          "name": "Supprimer Projet B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('204 No Content', function () { pm.response.to.have.status(204); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectIdB}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectIdB}}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

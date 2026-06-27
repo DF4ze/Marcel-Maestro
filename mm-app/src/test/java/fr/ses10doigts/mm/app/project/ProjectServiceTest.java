@@ -8,6 +8,8 @@ import fr.ses10doigts.mm.starter.project.ProjectRepository;
 import fr.ses10doigts.mm.starter.project.ProjectStatus;
 import fr.ses10doigts.mm.starter.project.ProjectWorkspaceEntity;
 import fr.ses10doigts.mm.starter.project.ProjectWorkspaceRepository;
+import fr.ses10doigts.mm.app.conversation.ConversationService;
+import fr.ses10doigts.mm.starter.conversation.ConversationEntity;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.ai.chat.memory.repository.jdbc.JdbcChatMemoryRepository;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -46,6 +49,12 @@ class ProjectServiceTest {
 
     @Autowired
     private ProjectWorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private ConversationService conversationService;
+
+    @Autowired
+    private JdbcChatMemoryRepository jdbcChatMemoryRepository;
 
     @Autowired
     private WorkspaceProperties workspaceProperties;
@@ -139,6 +148,24 @@ class ProjectServiceTest {
 
         assertThat(projectRepository.findById(id)).isEmpty();
         assertThat(Files.exists(dir)).isFalse();
+    }
+
+    @Test
+    @DisplayName("delete purge aussi la mémoire Spring AI de toutes les conversations du projet")
+    void deleteClearsChatMemoryForAllProjectConversations() {
+        ProjectEntity project = projectService.create("projet-memoire");
+        ConversationEntity conv1 = conversationService.startConversation(project.getId());
+        ConversationEntity conv2 = conversationService.startConversation(project.getId());
+        conversationService.addMessage(conv1.getId(), "Message 1");
+        conversationService.addMessage(conv2.getId(), "Message 2");
+
+        assertThat(jdbcChatMemoryRepository.findByConversationId(conv1.getId())).hasSize(1);
+        assertThat(jdbcChatMemoryRepository.findByConversationId(conv2.getId())).hasSize(1);
+
+        projectService.delete(project.getId());
+
+        assertThat(jdbcChatMemoryRepository.findByConversationId(conv1.getId())).isEmpty();
+        assertThat(jdbcChatMemoryRepository.findByConversationId(conv2.getId())).isEmpty();
     }
 
     @Test
