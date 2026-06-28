@@ -6,6 +6,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import fr.ses10doigts.mm.app.specialist.coding.CodingAgentsProperties;
+import fr.ses10doigts.mm.app.specialist.coding.TaskQualifier;
 import fr.ses10doigts.mm.core.agent.AgentContext;
 import fr.ses10doigts.mm.core.orchestration.Dispatcher;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
@@ -56,13 +58,16 @@ class ConversationTaskPersistenceTest {
                 projectRepository,
                 projectWorkspaceRepository,
                 pathValidator,
-                conversationTaskRepository);
+                conversationTaskRepository,
+                new TaskQualifier(new CodingAgentsProperties(), fixedProvider(null)),
+                fixedProvider(null));
 
         agentContextHolder.bind(AgentContext.of("default", "project-1", "conversation-1", "chat-1"));
         try {
             String result = chatAgent.submitTask("Lance un build Maven");
 
-            assertThat(result).startsWith("Tache soumise - id: ");
+            assertThat(result).contains("id: ");
+            assertThat(result).contains("codex");
         } finally {
             agentContextHolder.clear();
         }

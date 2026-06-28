@@ -41,4 +41,20 @@ public class ConversationTaskEntity {
     @Column(nullable = false)
     @Builder.Default
     private ConversationTaskStatus status = ConversationTaskStatus.RUNNING;
+
+    /** Agent spécialiste résolu par le qualificateur (ex. {@code claude}, {@code codex}). */
+    @Column(name = "agent_id")
+    private String agentId;
+
+    /** Catégorie métier déterminée par le qualificateur (ex. {@code CODING}, {@code BUILD}). */
+    @Column(name = "category")
+    private String category;
+
+    /** Résumé du résultat de la tâche, renseigné à la fermeture de boucle. */
+    @Column(name = "result_summary")
+    private String resultSummary;
+
+    /** Horodatage ISO-8601 de fin d'exécution, renseigné à la fermeture de boucle. */
+    @Column(name = "completed_at")
+    private String completedAt;
 }

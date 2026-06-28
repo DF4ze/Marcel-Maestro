@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import fr.ses10doigts.mm.app.specialist.coding.CodingAgentsProperties;
+import fr.ses10doigts.mm.app.specialist.coding.TaskQualifier;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
 import fr.ses10doigts.mm.core.orchestration.Dispatcher;
 import fr.ses10doigts.mm.core.tool.PathValidator;
@@ -63,7 +65,9 @@ class ChatAgentStreamTest {
                 projectRepository,
                 projectWorkspaceRepository,
                 pathValidator,
-                conversationTaskRepository);
+                conversationTaskRepository,
+                new TaskQualifier(new CodingAgentsProperties(), emptyProvider()),
+                emptyProvider());
 
         List<String> tokens = chatAgent.stream("conv-1", "Bonjour").collectList().block();
 

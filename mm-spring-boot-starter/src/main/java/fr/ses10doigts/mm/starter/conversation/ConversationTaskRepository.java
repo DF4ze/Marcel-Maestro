@@ -1,6 +1,7 @@
 package fr.ses10doigts.mm.starter.conversation;
 
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -15,4 +16,12 @@ public interface ConversationTaskRepository extends JpaRepository<ConversationTa
      * @return liens conversation/tache tries par date de soumission decroissante
      */
     List<ConversationTaskEntity> findAllByConversationIdOrderBySubmittedAtDesc(String conversationId);
+
+    /**
+     * Retrouve le lien conversation/tache associe a un identifiant de tache moteur.
+     *
+     * @param taskId identifiant de la tache soumise au moteur
+     * @return lien conversation/tache si present
+     */
+    Optional<ConversationTaskEntity> findByTaskId(String taskId);
 }

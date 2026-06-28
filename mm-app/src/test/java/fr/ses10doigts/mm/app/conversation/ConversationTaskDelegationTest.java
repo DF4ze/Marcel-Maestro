@@ -119,7 +119,8 @@ class ConversationTaskDelegationTest {
         TaskMessage submitted = captor.getValue();
         assertThat(submitted.taskId()).isNotBlank();
         assertThat(submitted.type().name()).isEqualTo("USER_REQUEST");
-        assertThat(submitted.assignee()).isEqualTo("cortex");
+        // Routage deterministe via le qualificateur : "build Maven" -> BUILD -> codex.
+        assertThat(submitted.assignee()).isEqualTo("codex");
         assertThat(submitted.content()).isEqualTo("Lance un build Maven du projet courant");
         assertThat(submitted.ctx().projectId()).isEqualTo(project.getId());
         assertThat(submitted.ctx().conversationId()).isEqualTo(conversation.getId());

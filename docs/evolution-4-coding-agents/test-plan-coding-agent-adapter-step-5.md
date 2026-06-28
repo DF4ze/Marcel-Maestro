@@ -1,5 +1,12 @@
 # Plan de test manuel — CodingAgentAdapter (étapes 2+3+5)
 
+> ⚠️ **OBSOLÈTE (2026-06-28).** Les endpoints REST décrits ici
+> (`/api/coding-agent-tasks` et `/internal/manual/coding-agents/*`) ainsi que le
+> `TaskDispatcher` et le `TaskRouter` ont été **supprimés**. Le routage déterministe a
+> été recentré dans le `TaskQualifier` (règles + repli LLM) et le seul chemin nominal est
+> désormais : conversation → `submit_task` (qualifié) → Dispatcher → spécialiste Claude/Codex.
+> Ce document est conservé pour mémoire. Voir `docs/analyse-chaine-telegram-cortex-agents.md`.
+
 ## Objet
 
 Valider manuellement le sous-système `CodingAgentAdapter` sur deux axes complémentaires :

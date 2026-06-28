@@ -1,8 +1,12 @@
 package fr.ses10doigts.mm.app.conversation;
 
+import fr.ses10doigts.mm.app.specialist.coding.Qualification;
+import fr.ses10doigts.mm.app.specialist.coding.TaskQualifier;
 import fr.ses10doigts.mm.core.agent.AgentContext;
 import fr.ses10doigts.mm.core.agent.TaskMessage;
 import fr.ses10doigts.mm.core.agent.TaskType;
+import fr.ses10doigts.mm.core.journal.Journal;
+import fr.ses10doigts.mm.core.journal.JournalEntry;
 import fr.ses10doigts.mm.core.orchestration.Dispatcher;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
 import fr.ses10doigts.mm.core.tool.PathValidator;
@@ -48,6 +52,8 @@ public class ChatAgent {
     private final ProjectWorkspaceRepository projectWorkspaceRepository;
     private final PathValidator pathValidator;
     private final ConversationTaskRepository conversationTaskRepository;
+    private final TaskQualifier taskQualifier;
+    private final ObjectProvider<Journal> journalProvider;
 
     @Value("${mm.chat.context.max-file-read-chars:5000}")
     private int maxFileReadChars;
@@ -99,10 +105,12 @@ public class ChatAgent {
     }
 
     @Tool(name = "submit_task",
-            description = "Soumet une tache au moteur agentique Marcel pour execution en arriere-plan. "
-                    + "A utiliser quand la demande requiert une action concrete : lire/ecrire des fichiers, "
-                    + "lancer un build Maven, deployer sur le VPS. "
+            description = "Soumet une tache concrete a un agent de coding specialise (Claude ou Codex) "
+                    + "pour execution en arriere-plan. "
+                    + "A utiliser quand la demande requiert une action reelle : ecrire/modifier du code, "
+                    + "lancer un build Maven, executer un script, deployer sur le VPS. "
                     + "Ne pas utiliser pour une simple question ou discussion. "
+                    + "Le choix de l'agent est determine automatiquement par le qualificateur. "
                     + "Retourne l'identifiant de la tache soumise.")
     public String submitTask(String description) {
         AgentContext currentContext = agentContextHolder.get();
@@ -114,11 +122,13 @@ public class ChatAgent {
             throw new IllegalStateException("Dispatcher indisponible pour submit_task");
         }
 
+        // Routage deterministe : le qualificateur tranche la categorie puis l'agent cible.
+        Qualification qualification = taskQualifier.qualify(description);
         String taskId = UUID.randomUUID().toString();
         TaskMessage taskMessage = new TaskMessage(
                 taskId,
                 TaskType.USER_REQUEST,
-                "cortex",
+                qualification.agentId(),
                 description,
                 AgentContext.of(
                         currentContext.tenant(),
@@ -133,15 +143,46 @@ public class ChatAgent {
                 .taskId(taskId)
                 .submittedAt(java.time.Instant.now().toString())
                 .status(ConversationTaskStatus.RUNNING)
+                .agentId(qualification.agentId())
+                .category(qualification.category().name())
                 .build());
-        log.info("submit_task execute - taskId={}, projectId={}, conversationId={}, description='{}'",
+
+        journalRoutingDecision(currentContext, taskId, description, qualification);
+        log.info("submit_task routage - taskId={}, projectId={}, conversationId={}, category={}, agent={}, source={}, description='{}'",
                 taskId,
                 currentContext.projectId(),
                 currentContext.conversationId(),
+                qualification.category(),
+                qualification.agentId(),
+                qualification.source(),
                 truncate(description, 80));
-        log.info("submit_task persiste - taskId={}, conversationId={}",
-                taskId, currentContext.conversationId());
-        return "Tache soumise - id: " + taskId;
+        return "Tache soumise a l'agent " + qualification.agentId()
+                + " (categorie " + qualification.category() + ") - id: " + taskId;
+    }
+
+    /**
+     * Journalise la decision de routage pour rendre le routage observable (FileJournal JSONL).
+     *
+     * @param ctx contexte d'execution courant
+     * @param taskId identifiant de la tache soumise
+     * @param description description qualifiee
+     * @param qualification resultat du qualificateur
+     */
+    private void journalRoutingDecision(AgentContext ctx, String taskId, String description,
+                                        Qualification qualification) {
+        Journal journal = journalProvider.getIfAvailable();
+        if (journal == null) {
+            return;
+        }
+        java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("category", qualification.category().name());
+        data.put("agentId", qualification.agentId());
+        data.put("source", qualification.source().name());
+        data.put("projectId", ctx.projectId());
+        data.put("conversationId", ctx.conversationId());
+        data.put("description", truncate(description, 120));
+        journal.append(new JournalEntry(
+                java.time.Instant.now(), "chat-router", taskId, "routing_decision", data));
     }
 
     @Tool(name = "read_project_file",

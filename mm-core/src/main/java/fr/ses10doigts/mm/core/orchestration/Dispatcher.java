@@ -47,11 +47,35 @@ public class Dispatcher {
     private final Map<String, AgentFactory> agentFactories;
     private final Executor executor;
     private final HumanInteraction humanInteraction; // nullable — canal de notification des résultats
+    private final List<TaskOutcomeListener> outcomeListeners; // jamais null — fermeture de boucle
     private final ConcurrentHashMap<String, DispatcherHandle> activeHandles = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     /**
-     * Construit un Dispatcher avec canal de notification (étape 8).
+     * Construit un Dispatcher complet avec canal de notification et observateurs de fin de tâche.
+     *
+     * @param taskQueue        file de tâches à consommer
+     * @param agentFactories   liste des factories d'agents disponibles
+     * @param executor         pool borné pour l'exécution des agents
+     * @param humanInteraction canal de notification pour renvoyer les réponses (nullable)
+     * @param outcomeListeners observateurs de fin de tâche utilisateur (nullable = aucun)
+     */
+    public Dispatcher(TaskQueue taskQueue, List<AgentFactory> agentFactories, Executor executor,
+                      HumanInteraction humanInteraction, List<TaskOutcomeListener> outcomeListeners) {
+        this.taskQueue = taskQueue;
+        this.agentFactories = agentFactories.stream()
+                .collect(Collectors.toMap(AgentFactory::agentId, Function.identity()));
+        this.executor = executor;
+        this.humanInteraction = humanInteraction;
+        this.outcomeListeners = outcomeListeners == null ? List.of() : List.copyOf(outcomeListeners);
+        log.info("Dispatcher initialisé — {} factory(ies) enregistrée(s) : {}, notification={}, listeners={}",
+                this.agentFactories.size(), this.agentFactories.keySet(),
+                humanInteraction != null ? humanInteraction.getClass().getSimpleName() : "aucune",
+                this.outcomeListeners.size());
+    }
+
+    /**
+     * Construit un Dispatcher avec canal de notification, sans observateur (rétro-compatibilité).
      *
      * @param taskQueue        file de tâches à consommer
      * @param agentFactories   liste des factories d'agents disponibles
@@ -60,14 +84,7 @@ public class Dispatcher {
      */
     public Dispatcher(TaskQueue taskQueue, List<AgentFactory> agentFactories, Executor executor,
                       HumanInteraction humanInteraction) {
-        this.taskQueue = taskQueue;
-        this.agentFactories = agentFactories.stream()
-                .collect(Collectors.toMap(AgentFactory::agentId, Function.identity()));
-        this.executor = executor;
-        this.humanInteraction = humanInteraction;
-        log.info("Dispatcher initialisé — {} factory(ies) enregistrée(s) : {}, notification={}",
-                this.agentFactories.size(), this.agentFactories.keySet(),
-                humanInteraction != null ? humanInteraction.getClass().getSimpleName() : "aucune");
+        this(taskQueue, agentFactories, executor, humanInteraction, List.of());
     }
 
     /**
@@ -78,7 +95,7 @@ public class Dispatcher {
      * @param executor       pool borné pour l'exécution des agents
      */
     public Dispatcher(TaskQueue taskQueue, List<AgentFactory> agentFactories, Executor executor) {
-        this(taskQueue, agentFactories, executor, null);
+        this(taskQueue, agentFactories, executor, null, List.of());
     }
 
     /**
@@ -287,6 +304,27 @@ public class Dispatcher {
             log.info("Tâche utilisateur terminée — taskId={}, status={}",
                     originalTask.taskId(), outcome.finalStatus().json());
             notifyOutcome(originalTask, outcome);
+            notifyOutcomeListeners(originalTask, outcome);
+        }
+    }
+
+    /**
+     * Notifie les observateurs de fin de tâche (fermeture de boucle côté hôte).
+     *
+     * <p>Chaque listener est isolé : une exception n'interrompt ni les autres listeners,
+     * ni le routage.</p>
+     *
+     * @param originalTask la tâche utilisateur d'origine
+     * @param outcome      le résultat terminal
+     */
+    private void notifyOutcomeListeners(TaskMessage originalTask, AgentOutcome outcome) {
+        for (TaskOutcomeListener listener : outcomeListeners) {
+            try {
+                listener.onUserTaskCompleted(originalTask, outcome);
+            } catch (Exception e) {
+                log.warn("Listener de fin de tâche en échec — taskId={}, listener={} : {}",
+                        originalTask.taskId(), listener.getClass().getSimpleName(), e.getMessage());
+            }
         }
     }
 

@@ -3,6 +3,7 @@ package fr.ses10doigts.mm.starter.orchestration;
 import fr.ses10doigts.mm.core.hitl.HumanInteraction;
 import fr.ses10doigts.mm.core.orchestration.AgentFactory;
 import fr.ses10doigts.mm.core.orchestration.Dispatcher;
+import fr.ses10doigts.mm.core.orchestration.TaskOutcomeListener;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
 import fr.ses10doigts.mm.starter.queue.InMemoryTaskQueue;
 import jakarta.annotation.PreDestroy;
@@ -101,6 +102,7 @@ public class DispatcherAutoConfiguration {
      * @param factories                 factories d'agents disponibles
      * @param executor                  exécuteur d'agents (virtual ou borné selon config)
      * @param humanInteractionProvider  canal de notification (optionnel)
+     * @param outcomeListenerProvider   observateurs de fin de tâche (fermeture de boucle, optionnels)
      * @return le Dispatcher démarré
      */
     @Bean
@@ -109,10 +111,12 @@ public class DispatcherAutoConfiguration {
     public Dispatcher dispatcher(TaskQueue taskQueue,
                                   ObjectProvider<AgentFactory> factories,
                                   @Qualifier("mmDispatcherExecutor") Executor executor,
-                                  ObjectProvider<HumanInteraction> humanInteractionProvider) {
+                                  ObjectProvider<HumanInteraction> humanInteractionProvider,
+                                  ObjectProvider<TaskOutcomeListener> outcomeListenerProvider) {
         List<AgentFactory> factoryList = factories.orderedStream().toList();
         HumanInteraction humanInteraction = humanInteractionProvider.getIfAvailable();
-        dispatcher = new Dispatcher(taskQueue, factoryList, executor, humanInteraction);
+        List<TaskOutcomeListener> outcomeListeners = outcomeListenerProvider.orderedStream().toList();
+        dispatcher = new Dispatcher(taskQueue, factoryList, executor, humanInteraction, outcomeListeners);
         dispatcher.start();
         return dispatcher;
     }

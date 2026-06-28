@@ -6,5 +6,6 @@ package fr.ses10doigts.mm.starter.conversation;
 public enum ConversationTaskStatus {
     RUNNING,
     DONE,
+    BLOCKED,
     KO
 }

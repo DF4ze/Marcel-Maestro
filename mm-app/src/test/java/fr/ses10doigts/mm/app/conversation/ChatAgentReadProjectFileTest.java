@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import fr.ses10doigts.mm.app.specialist.coding.TaskQualifier;
 import fr.ses10doigts.mm.core.agent.AgentContext;
+import fr.ses10doigts.mm.core.journal.Journal;
 import fr.ses10doigts.mm.core.orchestration.Dispatcher;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
 import fr.ses10doigts.mm.core.tool.PathValidator;
@@ -128,6 +130,8 @@ class ChatAgentReadProjectFileTest {
 
         @SuppressWarnings("unchecked")
         ObjectProvider<Dispatcher> dispatcherProvider = mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<Journal> journalProvider = mock(ObjectProvider.class);
         ChatAgent chatAgent = new ChatAgent(
                 mock(ChatClient.class),
                 mock(ChatMemory.class),
@@ -138,7 +142,9 @@ class ChatAgentReadProjectFileTest {
                 projectRepository,
                 projectWorkspaceRepository,
                 new PathValidator(workspaceRoot, externalWorkspaceRegistry(externalWorkspace)),
-                mock(ConversationTaskRepository.class));
+                mock(ConversationTaskRepository.class),
+                mock(TaskQualifier.class),
+                journalProvider);
         ReflectionTestUtils.setField(chatAgent, "maxFileReadChars", maxChars);
         return chatAgent;
     }
