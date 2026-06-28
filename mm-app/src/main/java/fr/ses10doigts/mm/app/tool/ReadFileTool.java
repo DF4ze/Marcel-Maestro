@@ -108,6 +108,20 @@ public class ReadFileTool implements AgentTool {
             }
         }
 
+        Path projectRelativePath = resolveProjectRelativePath(normalized, ctx);
+        if (projectRelativePath != null) {
+            if (Files.exists(projectRelativePath)) {
+                log.info("read_file : chemin relatif projet '{}' -> '{}'", requestedPath, projectRelativePath);
+                return projectRelativePath;
+            }
+            Path fallback = resolveInAttachedWorkspaces(ctx.projectId(), requestedPath);
+            if (fallback != null) {
+                log.info("read_file : fallback workspace rattache '{}' -> '{}'", requestedPath, fallback);
+                return fallback;
+            }
+            return projectRelativePath;
+        }
+
         Path primary = workspaceRoot.resolve(requestedPath).normalize();
         if (ctx.projectId() != null && !Files.exists(primary)) {
             Path fallback = resolveInAttachedWorkspaces(ctx.projectId(), requestedPath);
@@ -117,6 +131,41 @@ public class ReadFileTool implements AgentTool {
             }
         }
         return primary;
+    }
+
+    /**
+     * Résout un chemin relatif simple dans le workspace du projet courant.
+     *
+     * @param normalizedPath chemin demandé avec séparateurs normalisés
+     * @param ctx contexte d'exécution courant
+     * @return chemin projet résolu, ou {@code null} si la règle ne s'applique pas
+     * @throws ToolException si le workspace projet est invalide
+     */
+    private Path resolveProjectRelativePath(String normalizedPath, AgentContext ctx) throws ToolException {
+        if (ctx.projectId() == null || ctx.projectId().isBlank()) {
+            return null;
+        }
+        Path requested;
+        try {
+            requested = Path.of(normalizedPath);
+        } catch (InvalidPathException e) {
+            throw new ToolException("Chemin invalide : " + normalizedPath, e);
+        }
+        if (requested.isAbsolute()) {
+            return null;
+        }
+
+        Optional<ProjectEntity> project = projectRepository.findById(ctx.projectId());
+        if (project.isEmpty()) {
+            return null;
+        }
+
+        try {
+            Path projectWorkspace = Path.of(project.get().getWorkspacePath()).toAbsolutePath().normalize();
+            return projectWorkspace.resolve(requested).normalize();
+        } catch (InvalidPathException e) {
+            throw new ToolException("Workspace projet invalide : " + e.getMessage(), e);
+        }
     }
 
     private Path resolveInAttachedWorkspaces(String projectId, String requestedPath) throws ToolException {

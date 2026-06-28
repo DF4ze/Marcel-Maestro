@@ -1,6 +1,8 @@
 package fr.ses10doigts.mm.app.conversation;
 
+import fr.ses10doigts.mm.app.specialist.coding.CodingRoutingPromptExtension;
 import fr.ses10doigts.mm.core.prompt.SystemPromptExtension;
+import fr.ses10doigts.mm.starter.prompt.ToolsSystemPromptExtension;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,8 +14,13 @@ import org.springframework.stereotype.Component;
  *
  * <p>Contrairement à {@code SystemPromptComposer}, dont le prompt de base est spécifique
  * au mode Cortex JSON structuré, ce composeur assemble un prompt de base orienté
- * conversation libre avec les mêmes {@link SystemPromptExtension} dynamiques
- * déjà utilisées par l'application.</p>
+ * conversation libre avec un sous-ensemble des {@link SystemPromptExtension}
+ * dynamiques de l'application.</p>
+ *
+ * <p>Important : le mode conversationnel n'expose pas directement les outils noyau
+ * ({@code write_file}, {@code maven_build}, etc.). Ces actions doivent passer par
+ * {@code submit_task -> cortex}. On filtre donc les extensions qui annonceraient
+ * des capacités réservées au moteur historique.</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -33,7 +40,7 @@ public class MarcelChatPromptComposer {
     public String compose() {
         StringBuilder builder = new StringBuilder(basePrompt.strip());
         for (SystemPromptExtension extension : extensions) {
-            if (extension == null) {
+            if (extension == null || !shouldInclude(extension)) {
                 continue;
             }
             String contribution = extension.contribution();
@@ -43,5 +50,16 @@ public class MarcelChatPromptComposer {
         }
         log.debug("Prompt Marcel composé — {} extension(s) appliquée(s)", extensions.size());
         return builder.toString();
+    }
+
+    /**
+     * Exclut du mode conversationnel les extensions réservées au moteur Cortex.
+     *
+     * @param extension extension candidate
+     * @return {@code true} si l'extension peut être injectée dans le prompt conversationnel
+     */
+    private boolean shouldInclude(SystemPromptExtension extension) {
+        return !(extension instanceof ToolsSystemPromptExtension)
+                && !(extension instanceof CodingRoutingPromptExtension);
     }
 }

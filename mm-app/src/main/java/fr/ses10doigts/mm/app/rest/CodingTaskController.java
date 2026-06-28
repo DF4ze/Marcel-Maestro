@@ -20,7 +20,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * API REST minimale dédiée au CodingAgentAdapter.
+ * API REST minimale technique dédiée au CodingAgentAdapter.
+ *
+ * <p>Cette API reste utile pour les tests ciblés des spécialistes CLI. Le flux
+ * métier nominal passe toutefois par {@code submit_task -> cortex} puis par le
+ * Dispatcher historique.</p>
  */
 @RestController
 @RequestMapping("/api/coding-agent-tasks")
@@ -52,7 +56,7 @@ public class CodingTaskController {
                 .workingDirectory(resolveWorkingDirectory(request.workingDirectory()))
                 .build();
 
-        log.info("POST /api/coding-agent-tasks — taskId={}, category={}", taskId, task.getCategory());
+        log.info("POST /api/coding-agent-tasks - taskId={}, category={}", taskId, task.getCategory());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(new TaskSubmitResponse(taskDispatcher.submit(task, context)));
     }
@@ -66,10 +70,16 @@ public class CodingTaskController {
     @DeleteMapping("/{taskId}")
     public ResponseEntity<Void> stop(@PathVariable String taskId) {
         taskDispatcher.stop(taskId);
-        log.info("DELETE /api/coding-agent-tasks/{} — stop demandé", taskId);
+        log.info("DELETE /api/coding-agent-tasks/{} - stop demande", taskId);
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Normalise le working directory reçu du client technique.
+     *
+     * @param workingDirectory chemin fourni par le client
+     * @return chemin absolu courant par défaut, sinon valeur fournie
+     */
     private String resolveWorkingDirectory(String workingDirectory) {
         if (workingDirectory == null || workingDirectory.isBlank()) {
             return Path.of("").toAbsolutePath().normalize().toString();

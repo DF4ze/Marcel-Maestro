@@ -45,6 +45,28 @@ class ProjectContextFileRoutingTest {
     }
 
     @Test
+    @DisplayName("write_file écrit un chemin relatif simple dans le workspace du projet courant")
+    void writeFile_writesRelativePathInCurrentProjectWorkspace(@TempDir Path tempDir) throws Exception {
+        Path globalWorkspace = Files.createDirectories(tempDir.resolve("workspace"));
+        Path projectWorkspace = Files.createDirectories(globalWorkspace.resolve("autre"));
+        ProjectRepository projectRepository = mock(ProjectRepository.class);
+        when(projectRepository.findById("project-autre")).thenReturn(Optional.of(ProjectEntity.builder()
+                .id("project-autre")
+                .workspacePath(projectWorkspace.toString())
+                .build()));
+
+        WriteFileTool tool = new WriteFileTool(globalWorkspace.toString(), projectRepository);
+        ToolResult result = tool.execute(
+                Map.of("path", "TOTO.txt", "content", "contenu autre"),
+                AgentContext.of("default", "project-autre", "conv-1", "task-1"));
+
+        assertThat(result.success()).isTrue();
+        assertThat(Files.readString(projectWorkspace.resolve("TOTO.txt"), StandardCharsets.UTF_8))
+                .isEqualTo("contenu autre");
+        assertThat(Files.exists(globalWorkspace.resolve("TOTO.txt"))).isFalse();
+    }
+
+    @Test
     @DisplayName("read_file lit workspace/PROJECT.md depuis le workspace du projet courant")
     void readFile_redirectsProjectContextFile(@TempDir Path tempDir) throws Exception {
         Path globalWorkspace = Files.createDirectories(tempDir.resolve("workspace"));
@@ -64,6 +86,28 @@ class ProjectContextFileRoutingTest {
 
         assertThat(result.success()).isTrue();
         assertThat(result.data()).isEqualTo("source projet");
+    }
+
+    @Test
+    @DisplayName("read_file lit un chemin relatif simple depuis le workspace du projet courant")
+    void readFile_readsRelativePathFromCurrentProjectWorkspace(@TempDir Path tempDir) throws Exception {
+        Path globalWorkspace = Files.createDirectories(tempDir.resolve("workspace"));
+        Path projectWorkspace = Files.createDirectories(globalWorkspace.resolve("autre"));
+        Files.writeString(projectWorkspace.resolve("TOTO.txt"), "contenu projet", StandardCharsets.UTF_8);
+        ProjectRepository projectRepository = mock(ProjectRepository.class);
+        ProjectWorkspaceRepository workspaceRepository = mock(ProjectWorkspaceRepository.class);
+        when(projectRepository.findById("project-autre")).thenReturn(Optional.of(ProjectEntity.builder()
+                .id("project-autre")
+                .workspacePath(projectWorkspace.toString())
+                .build()));
+
+        ReadFileTool tool = new ReadFileTool(globalWorkspace.toString(), projectRepository, workspaceRepository);
+        ToolResult result = tool.execute(
+                Map.of("path", "TOTO.txt"),
+                AgentContext.of("default", "project-autre", "conv-1", "task-1"));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.data()).isEqualTo("contenu projet");
     }
 
     @Test

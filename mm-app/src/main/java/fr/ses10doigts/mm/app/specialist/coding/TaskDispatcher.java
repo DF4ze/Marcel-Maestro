@@ -15,7 +15,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
- * Point d'entrée asynchrone du sous-système de coding agents.
+ * Point d'entrée asynchrone technique du sous-système de coding agents.
+ *
+ * <p>Ce composant sert aux validations directes des spécialistes CLI et au endpoint
+ * technique associé. Le chemin métier nominal reste
+ * {@code TaskQueue -> Dispatcher -> Cortex -> spécialistes}.</p>
  */
 @Service
 @Slf4j
@@ -61,7 +65,7 @@ public class TaskDispatcher {
      */
     public String submit(AgentTask task, MarcelContext context) {
         String taskId = task.getId();
-        log.info("TaskDispatcher submit — taskId={}, category={}", taskId, task.getCategory());
+        log.info("TaskDispatcher submit - taskId={}, category={}", taskId, task.getCategory());
 
         RunningTask runningTask = new RunningTask();
         RunningTask previous = runningTasks.putIfAbsent(taskId, runningTask);
@@ -83,14 +87,14 @@ public class TaskDispatcher {
     public void stop(String taskId) {
         RunningTask runningTask = runningTasks.remove(taskId);
         if (runningTask == null) {
-            log.info("TaskDispatcher stop — taskId={}, running=false", taskId);
+            log.info("TaskDispatcher stop - taskId={}, running=false", taskId);
             return;
         }
 
         CompletableFuture<AgentReport> future = runningTask.getFuture();
         boolean cancelled = future != null && future.cancel(true);
         completedReports.put(taskId, AgentReport.ko("Tâche interrompue par STOP"));
-        log.info("TaskDispatcher stop — taskId={}, cancelled={}", taskId, cancelled);
+        log.info("TaskDispatcher stop - taskId={}, cancelled={}", taskId, cancelled);
     }
 
     /**
@@ -113,36 +117,55 @@ public class TaskDispatcher {
         return runningTasks.containsKey(taskId);
     }
 
+    /**
+     * Exécute la mission sur le spécialiste résolu par le routeur technique.
+     *
+     * @param task tâche à exécuter
+     * @param context contexte injecté au spécialiste
+     * @return rapport structuré du spécialiste
+     */
     private AgentReport execute(AgentTask task, MarcelContext context) {
         SpecialistAgentPort agent = taskRouter.resolve(task.getCategory());
         return agent.execute(task, context);
     }
 
+    /**
+     * Finalise l'état interne d'une tâche asynchrone technique.
+     *
+     * @param taskId identifiant de suivi
+     * @param report rapport produit quand l'exécution réussit
+     * @param error exception éventuelle remontée par la future
+     */
     private void finalizeTask(String taskId, AgentReport report, Throwable error) {
         runningTasks.remove(taskId);
         if (error == null) {
             completedReports.put(taskId, report);
-            log.info("TaskDispatcher terminé — taskId={}, status={}", taskId, report.getStatus());
+            log.info("TaskDispatcher termine - taskId={}, status={}", taskId, report.getStatus());
             return;
         }
 
         if (error instanceof java.util.concurrent.CancellationException) {
-            log.info("TaskDispatcher terminé — taskId={}, status={}", taskId, AgentReport.Status.KO);
+            log.info("TaskDispatcher termine - taskId={}, status={}", taskId, AgentReport.Status.KO);
             return;
         }
 
         Throwable cause = error instanceof CompletionException && error.getCause() != null
                 ? error.getCause()
                 : error;
-        AgentReport failure = AgentReport.ko("Échec d'exécution : " + cause.getMessage());
+        AgentReport failure = AgentReport.ko("Echec d'execution : " + cause.getMessage());
         completedReports.put(taskId, failure);
-        log.info("TaskDispatcher terminé — taskId={}, status={}", taskId, failure.getStatus());
+        log.info("TaskDispatcher termine - taskId={}, status={}", taskId, failure.getStatus());
     }
 
     @Getter
     private static class RunningTask {
         private CompletableFuture<AgentReport> future;
 
+        /**
+         * Associe la future réellement soumise à ce suivi de tâche.
+         *
+         * @param future future d'exécution asynchrone
+         */
         private void setFuture(CompletableFuture<AgentReport> future) {
             this.future = future;
         }
