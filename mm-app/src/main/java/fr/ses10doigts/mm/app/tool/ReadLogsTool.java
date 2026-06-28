@@ -8,11 +8,16 @@ import fr.ses10doigts.mm.core.tool.AgentTool;
 import fr.ses10doigts.mm.core.tool.RiskLevel;
 import fr.ses10doigts.mm.core.tool.ToolException;
 import fr.ses10doigts.mm.core.tool.ToolResult;
+import fr.ses10doigts.mm.starter.project.ProjectEntity;
+import fr.ses10doigts.mm.starter.project.ProjectRepository;
+import fr.ses10doigts.mm.starter.project.ProjectWorkspaceRepository;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -31,14 +36,25 @@ public class ReadLogsTool implements AgentTool {
     private static final JsonNode SCHEMA = buildSchema();
 
     private final Path workspaceRoot;
+    private final ProjectRepository projectRepository;
+    private final ProjectWorkspaceRepository projectWorkspaceRepository;
 
     /**
      * Construit le tool avec le répertoire workspace configuré.
      *
-     * @param workspaceRoot chemin racine du workspace (défaut {@code ./workspace})
+     * @param workspaceRoot chemin racine du workspace global (défaut {@code ./workspace}),
+     *                      utilisé en repli
+     * @param projectRepository repository des projets, pour résoudre les chemins relatifs
+     *                          dans le workspace interne du projet courant
+     * @param projectWorkspaceRepository repository des workspaces rattachés, pour la
+     *                                   résolution multi-dossier en fallback
      */
-    public ReadLogsTool(@Value("${mm.workspace.root:./workspace}") String workspaceRoot) {
+    public ReadLogsTool(@Value("${mm.workspace.root:./workspace}") String workspaceRoot,
+                        ProjectRepository projectRepository,
+                        ProjectWorkspaceRepository projectWorkspaceRepository) {
         this.workspaceRoot = Path.of(workspaceRoot);
+        this.projectRepository = projectRepository;
+        this.projectWorkspaceRepository = projectWorkspaceRepository;
     }
 
     /** {@inheritDoc} */
@@ -50,7 +66,9 @@ public class ReadLogsTool implements AgentTool {
     /** {@inheritDoc} */
     @Override
     public String description() {
-        return "Lit les N dernières lignes d'un fichier de log";
+        return "Lit les N dernières lignes d'un fichier de log (paramètre 'lines', défaut 50). "
+                + "Chemin relatif résolu dans le workspace interne du projet courant, avec recherche "
+                + "dans les workspaces rattachés en fallback ; chemin absolu accepté tel quel.";
     }
 
     /** {@inheritDoc} */
@@ -86,7 +104,7 @@ public class ReadLogsTool implements AgentTool {
             lines = number.intValue();
         }
 
-        Path resolved = workspaceRoot.resolve(path).normalize();
+        Path resolved = resolvePath(path, ctx);
         log.info("read_logs : lecture des {} dernières lignes de '{}', tenant='{}'",
                 lines, resolved, ctx.tenant());
 
@@ -109,6 +127,47 @@ public class ReadLogsTool implements AgentTool {
             log.info("Erreur de lecture du fichier '{}' : {}", resolved, e.getMessage());
             throw new ToolException("Erreur de lecture : " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Résout le chemin du log : projet-relatif (workspace interne) avec recherche dans les
+     * workspaces rattachés en fallback, sinon repli sur le workspace global. Un chemin absolu
+     * est retourné tel quel (normalisé).
+     *
+     * @param requestedPath chemin demandé
+     * @param ctx contexte d'exécution courant
+     * @return chemin résolu pour lecture
+     */
+    private Path resolvePath(String requestedPath, AgentContext ctx) {
+        Path requested;
+        try {
+            requested = Path.of(requestedPath.replace('\\', '/'));
+        } catch (InvalidPathException e) {
+            return workspaceRoot.resolve(requestedPath).normalize();
+        }
+        if (requested.isAbsolute()) {
+            return requested.normalize();
+        }
+        if (ctx != null && ctx.projectId() != null && !ctx.projectId().isBlank()) {
+            Optional<ProjectEntity> project = projectRepository.findById(ctx.projectId());
+            if (project.isPresent()) {
+                Path projectPrimary = Path.of(project.get().getWorkspacePath())
+                        .toAbsolutePath().normalize().resolve(requested).normalize();
+                if (Files.exists(projectPrimary)) {
+                    return projectPrimary;
+                }
+                Path attached = projectWorkspaceRepository.findAllByProjectId(ctx.projectId()).stream()
+                        .map(ws -> Path.of(ws.getPath()).toAbsolutePath().normalize().resolve(requested).normalize())
+                        .filter(Files::exists)
+                        .findFirst()
+                        .orElse(null);
+                if (attached != null) {
+                    return attached;
+                }
+                return projectPrimary;
+            }
+        }
+        return workspaceRoot.resolve(requested).normalize();
     }
 
     private static JsonNode buildSchema() {

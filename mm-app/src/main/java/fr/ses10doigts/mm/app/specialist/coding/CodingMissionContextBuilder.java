@@ -82,11 +82,57 @@ public class CodingMissionContextBuilder {
         return List.copyOf(roots);
     }
 
+    /**
+     * Determine le repertoire de travail du specialiste : le plus long ancetre commun de
+     * toutes les racines declarees.
+     *
+     * <p>Cas couverts :</p>
+     * <ul>
+     *   <li>une seule racine -> cette racine ;</li>
+     *   <li>une racine est ancetre des autres (workspaces imbriques) -> cette racine ;</li>
+     *   <li>racines freres (ex. {@code /repos/api} et {@code /repos/front}) -> leur dossier
+     *       parent commun ({@code /repos}), pour que le CLI accede aux deux en relatif ;</li>
+     *   <li>aucun ancetre commun exploitable (racines sur des disques differents ou seulement
+     *       la racine du systeme de fichiers) -> repli sur le workspace interne du projet.</li>
+     * </ul>
+     *
+     * @param primaryWorkspace workspace interne du projet (repli par defaut)
+     * @param declaredWorkspaces racines declarees (interne + rattachees), normalisees
+     * @return repertoire de travail a passer au specialiste CLI
+     */
     private Path determineWorkingDirectory(Path primaryWorkspace, List<Path> declaredWorkspaces) {
-        return declaredWorkspaces.stream()
-                .filter(candidate -> declaredWorkspaces.stream().allMatch(root -> root.startsWith(candidate)))
-                .min((left, right) -> Integer.compare(left.getNameCount(), right.getNameCount()))
-                .orElse(primaryWorkspace);
+        if (declaredWorkspaces.isEmpty()) {
+            return primaryWorkspace;
+        }
+        Path common = declaredWorkspaces.get(0);
+        for (Path workspace : declaredWorkspaces) {
+            common = longestCommonAncestor(common, workspace);
+            if (common == null) {
+                return primaryWorkspace;
+            }
+        }
+        // Un ancetre commun reduit a la seule racine du FS (nameCount 0) n'est pas exploitable.
+        return common.getNameCount() == 0 ? primaryWorkspace : common;
+    }
+
+    /**
+     * Calcule le plus long ancetre commun de deux chemins absolus normalises.
+     *
+     * @param left premier chemin
+     * @param right second chemin
+     * @return l'ancetre commun, ou {@code null} si les chemins n'ont pas la meme racine FS
+     */
+    private Path longestCommonAncestor(Path left, Path right) {
+        Path root = left.getRoot();
+        if (root == null || !root.equals(right.getRoot())) {
+            return null;
+        }
+        int max = Math.min(left.getNameCount(), right.getNameCount());
+        int shared = 0;
+        while (shared < max && left.getName(shared).equals(right.getName(shared))) {
+            shared++;
+        }
+        return shared == 0 ? root : root.resolve(left.subpath(0, shared));
     }
 
     /**

@@ -166,6 +166,24 @@ public class PathValidator {
                 }
             }
 
+            // Resolution multi-dossier : un chemin RELATIF est tente sous chaque racine
+            // declaree du projet. S'il tombe sous l'une d'elles (sans en sortir), il est
+            // autorise. Aligne l'autorisation du validateur sur la resolution effective des
+            // outils (read_file/write_file/read_logs) qui cherchent dans tous les workspaces.
+            if (!p.isAbsolute() && workspaceRegistry != null && projectId != null && !projectId.isBlank()) {
+                for (String root : workspaceRegistry.declaredRoots(projectId)) {
+                    if (root == null || root.isBlank()) {
+                        continue;
+                    }
+                    Path declaredRoot = Path.of(root).toAbsolutePath().normalize();
+                    Path candidate = declaredRoot.resolve(p).normalize();
+                    if (candidate.startsWith(declaredRoot)) {
+                        log.debug("Chemin relatif autorise (workspace declare) : {} -> {}", path, candidate);
+                        return;
+                    }
+                }
+            }
+
             Path resolvedAbs = resolved.toAbsolutePath();
 
             if (SystemPathGuard.isDangerous(resolvedAbs)) {

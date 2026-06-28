@@ -48,7 +48,10 @@ public class ReadFileTool implements AgentTool {
 
     @Override
     public String description() {
-        return "Lit le contenu d'un fichier dans le workspace";
+        return "Lit le contenu d'un fichier (max 100 Ko). Chemin relatif résolu dans le workspace "
+                + "interne du projet courant, puis recherché dans les workspaces rattachés en fallback ; "
+                + "chemin absolu sous un workspace déclaré accepté. PROJECT.md et ROADMAP.md sont "
+                + "automatiquement redirigés vers le workspace interne du projet.";
     }
 
     @Override

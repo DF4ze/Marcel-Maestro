@@ -71,4 +71,27 @@ public class JpaWorkspaceRegistry implements WorkspaceRegistry {
                 normalizedInput, projectId);
         return false;
     }
+
+    /**
+     * Retourne les chemins absolus normalisés des dossiers externes déclarés du projet.
+     *
+     * <p>Utilisé par {@link fr.ses10doigts.mm.core.tool.PathValidator} pour résoudre un chemin
+     * relatif sous chacune des racines déclarées (résolution multi-dossier). Le workspace
+     * interne du projet n'est pas inclus ici : il est déjà couvert par la racine interne du
+     * validateur.</p>
+     *
+     * @param projectId identifiant du projet ; {@code null}/vide → liste vide
+     * @return chemins absolus normalisés des dossiers déclarés ; jamais {@code null}
+     */
+    @Override
+    public List<String> declaredRoots(String projectId) {
+        if (projectId == null || projectId.isBlank()) {
+            return List.of();
+        }
+        return workspaceRepository.findAllByProjectId(projectId).stream()
+                .map(ProjectWorkspaceEntity::getPath)
+                .filter(path -> path != null && !path.isBlank())
+                .map(path -> Path.of(path).toAbsolutePath().normalize().toString())
+                .toList();
+    }
 }

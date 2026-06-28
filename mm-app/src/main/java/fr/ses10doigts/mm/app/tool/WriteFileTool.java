@@ -49,7 +49,10 @@ public class WriteFileTool implements AgentTool {
 
     @Override
     public String description() {
-        return "Ecrire du contenu dans un fichier";
+        return "Écrit (crée ou remplace) du contenu dans un fichier. Chemin relatif résolu dans le "
+                + "workspace interne du projet courant ; si le fichier existe déjà dans un workspace "
+                + "rattaché, il y est réutilisé. PROJECT.md et ROADMAP.md sont toujours écrits dans le "
+                + "workspace interne du projet. Crée les dossiers parents au besoin.";
     }
 
     @Override

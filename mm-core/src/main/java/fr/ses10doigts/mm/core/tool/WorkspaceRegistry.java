@@ -41,4 +41,23 @@ public interface WorkspaceRegistry {
      * @return {@code true} si le chemin résolu est sous un dossier déclaré du projet
      */
     boolean isInDeclaredWorkspace(String absolutePath, String projectId);
+
+    /**
+     * Retourne les racines de travail externes déclarées pour un projet.
+     *
+     * <p>Sert à {@link PathValidator} pour résoudre un chemin <em>relatif</em> donné dans un
+     * prompt : un même chemin relatif est tenté sous chacune de ces racines (résolution
+     * multi-dossier). Le workspace interne du projet, lui, est déjà couvert par la racine
+     * interne de {@link PathValidator}.</p>
+     *
+     * <p>Méthode {@code default} pour rester rétro-compatible : les implémentations existantes
+     * (et les lambdas de test) qui ne fournissent que {@link #isInDeclaredWorkspace} continuent
+     * de compiler et se comportent comme avant (aucune racine relative supplémentaire).</p>
+     *
+     * @param projectId identifiant du projet ; {@code null} ou inconnu → liste vide
+     * @return chemins absolus normalisés des dossiers déclarés ; jamais {@code null}
+     */
+    default java.util.List<String> declaredRoots(String projectId) {
+        return java.util.List.of();
+    }
 }

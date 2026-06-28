@@ -8,11 +8,15 @@ import fr.ses10doigts.mm.core.tool.AgentTool;
 import fr.ses10doigts.mm.core.tool.RiskLevel;
 import fr.ses10doigts.mm.core.tool.ToolException;
 import fr.ses10doigts.mm.core.tool.ToolResult;
+import fr.ses10doigts.mm.starter.project.ProjectEntity;
+import fr.ses10doigts.mm.starter.project.ProjectRepository;
 import java.io.IOException;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,14 +40,20 @@ public class MavenBuildTool implements AgentTool {
     private static final JsonNode SCHEMA = buildSchema();
 
     private final Path workspaceRoot;
+    private final ProjectRepository projectRepository;
 
     /**
      * Construit le tool avec le répertoire workspace configuré.
      *
-     * @param workspaceRoot chemin racine du workspace (défaut {@code ./workspace})
+     * @param workspaceRoot chemin racine du workspace global (défaut {@code ./workspace}),
+     *                      utilisé en repli quand aucun projet n'est associé au contexte
+     * @param projectRepository repository des projets, pour exécuter Maven dans le workspace
+     *                          du projet courant plutôt que dans le workspace global
      */
-    public MavenBuildTool(@Value("${mm.workspace.root:./workspace}") String workspaceRoot) {
+    public MavenBuildTool(@Value("${mm.workspace.root:./workspace}") String workspaceRoot,
+                          ProjectRepository projectRepository) {
         this.workspaceRoot = Path.of(workspaceRoot);
+        this.projectRepository = projectRepository;
     }
 
     /** {@inheritDoc} */
@@ -55,7 +65,10 @@ public class MavenBuildTool implements AgentTool {
     /** {@inheritDoc} */
     @Override
     public String description() {
-        return "Exécute une commande Maven dans le workspace";
+        return "Exécute une commande Maven (goals, ex: 'clean verify') dans le workspace du projet courant. "
+                + "Le répertoire d'exécution est résolu automatiquement sur le workspace interne du projet ; "
+                + "à défaut de projet, le workspace global est utilisé. "
+                + "Paramètre 'module' optionnel pour restreindre à un module (-pl).";
     }
 
     /** {@inheritDoc} */
@@ -103,11 +116,12 @@ public class MavenBuildTool implements AgentTool {
             command.add(module);
         }
 
-        log.info("maven_build : exécution de '{}', tenant='{}'", command, ctx.tenant());
+        Path workingDir = resolveWorkingDirectory(ctx);
+        log.info("maven_build : exécution de '{}' dans '{}', tenant='{}'", command, workingDir, ctx.tenant());
 
         try {
             ProcessBuilder pb = new ProcessBuilder(command)
-                    .directory(workspaceRoot.toFile())
+                    .directory(workingDir.toFile())
                     .redirectErrorStream(true);
 
             Process process = pb.start();
@@ -138,6 +152,30 @@ public class MavenBuildTool implements AgentTool {
         } catch (IOException e) {
             log.info("Erreur d'exécution Maven : {}", e.getMessage());
             throw new ToolException("Erreur d'exécution Maven : " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Résout le répertoire d'exécution Maven : workspace interne du projet courant si présent,
+     * sinon workspace global de repli.
+     *
+     * @param ctx contexte d'exécution courant
+     * @return répertoire de travail pour le processus Maven
+     */
+    private Path resolveWorkingDirectory(AgentContext ctx) {
+        if (ctx == null || ctx.projectId() == null || ctx.projectId().isBlank()) {
+            return workspaceRoot;
+        }
+        Optional<ProjectEntity> project = projectRepository.findById(ctx.projectId());
+        if (project.isEmpty()) {
+            return workspaceRoot;
+        }
+        try {
+            return Path.of(project.get().getWorkspacePath()).toAbsolutePath().normalize();
+        } catch (InvalidPathException e) {
+            log.warn("maven_build : workspace projet invalide pour projectId={}, repli global",
+                    ctx.projectId(), e);
+            return workspaceRoot;
         }
     }
 
