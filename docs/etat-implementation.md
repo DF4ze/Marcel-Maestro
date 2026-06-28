@@ -1,6 +1,6 @@
 # État d'implémentation — Marcel Maestro
 **Date : 2026-06-28**  
-**Statut : E1 ✅ + E2 ✅ + E3-M0 ✅ + E3-M1 ✅ + E3-M2 ✅ + E3-M3 ✅ + E3-M4 ✅ + E3-M5 ✅ + E3-M6 ✅**
+**Statut : E1 ✅ + E2 ✅ + E3-M0 ✅ + E3-M1 ✅ + E3-M2 ✅ + E3-M3 ✅ + E3-M4 ✅ + E3-M5 ✅ + E3-M6 ✅ + Consolidation routage ✅**
 
 ---
 
@@ -90,6 +90,7 @@ Migrations présentes :
 - `V2` : `project` + `project_workspace` ;
 - `V3` : `conversation` + `SPRING_AI_CHAT_MEMORY` ;
 - `V5` : `conversation_task` ;
+- `V6` : colonnes de résultat sur `conversation_task` (`agent_id`, `category`, `result_summary`, `completed_at`) ;
 - colonnes d'activité conversation ajoutées pour le tri et le suivi (`message_count`, `last_message_at`).
 
 ---
@@ -106,6 +107,26 @@ Les derniers incréments ont livré :
 - boutons Telegram avec icônes de navigation.
 
 ---
+
+## 4bis. Consolidation du routage (2026-06-28)
+
+Suite à l'analyse de la chaîne Telegram → Cortex → Claude/Codex, le routage a été consolidé
+pour supprimer son caractère aléatoire (détails : `docs/analyse-chaine-telegram-cortex-agents.md`,
+ADR-034 à ADR-037) :
+
+- **Qualificateur hybride** (`TaskQualifier`) : règles de mots-clés d'abord, repli LLM sur cas
+  ambigu, défaut de sûreté. Résout catégorie → agent via `mm.agents.routing`.
+- **Routage direct et observable** : `submit_task` route directement vers `claude`/`codex` ;
+  la décision est journalisée (`FileJournal`, catégorie `routing_decision`) et loguée avec
+  `taskId` comme id de corrélation.
+- **Suppression du double dispatch** : `TaskDispatcher`, `TaskRouter` et les contrôleurs REST
+  `coding-agent-tasks` / `manual/coding-agents` retirés ; un seul cerveau de routage subsiste.
+- **Fermeture de boucle** : `TaskOutcomeListener` (noyau) + `ConversationTaskOutcomeListener`
+  (hôte) ; `conversation_task` enrichi (agent, catégorie, résumé du résultat, `completed_at`,
+  migration V6) et résultat réinjecté dans la mémoire de la conversation.
+
+Limite assumée : l'orchestration multi-étapes par Cortex n'opère plus depuis le flux
+conversationnel (Cortex reste actif sur `/api/tasks`).
 
 ## 5. Points de vigilance restants
 

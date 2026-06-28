@@ -25,6 +25,21 @@ POST /conversations/{id}/messages
 
 Il n'y a pas de classifier en amont. Marcel choisit via son system prompt et les outils exposés.
 
+> ⚠️ **Superseded le 2026-06-28 (consolidation E4).** Ce schéma a évolué : `submit_task`
+> ne route plus vers `cortex` mais passe par un **qualificateur déterministe** (`TaskQualifier`,
+> règles + repli LLM) qui résout l'agent cible et route **directement** vers le spécialiste
+> Claude/Codex. Voir ADR-034 à ADR-037 plus bas et `docs/analyse-chaine-telegram-cortex-agents.md`.
+> Flux actuel :
+> ```text
+> POST /conversations/{id}/messages
+>          ↓
+>    ChatAgent (ChatClient Spring AI + tools)
+>          ↓
+>     ┌── Pas d'outil appelé  →  réponse texte libre
+>     └── submit_task         →  TaskQualifier (catégorie + agent) → Dispatcher
+>                                  → spécialiste Claude/Codex → notification + fermeture de boucle
+> ```
+
 Ce que cela change :
 - `JdbcChatMemory` devient une vraie mémoire de travail continue.
 - `conversationId` devient l'ancre d'une session durable.
@@ -394,12 +409,16 @@ de lectures de fichiers projet ou de sources (`src/Main.java`) pourtant légitim
 ## 6. Nouveaux ADR
 
 ### ADR-026 — Architecture ChatAgent : Spring AI function calling natif
-**Statut** : ✅ Acté
+**Statut** : ⚠️ Partiellement superseded par ADR-034 (2026-06-28)
 
 **Décision** : le ChatAgent utilise des `@Tool` Spring AI pour déléguer des tâches et lire
 des fichiers projet. Pas de classifier externe.
 
 **Justification** : simplicité, cohérence et testabilité.
+
+**Révision (ADR-034)** : le ChatAgent conserve le function calling natif pour *décider* de
+déléguer, mais un qualificateur déterministe est désormais intercalé pour *router* la tâche.
+La décision « déléguer ou non » reste au LLM ; la décision « quel agent » devient déterministe.
 
 ---
 
@@ -434,11 +453,14 @@ applicatifs lors des suppressions.
 ---
 
 ### ADR-030 — `submit_task` comme `@Tool`, pas comme `AgentTool`
-**Statut** : ✅ Acté
+**Statut** : ✅ Acté (assignee révisé par ADR-035)
 
 **Décision** : `submit_task` appartient au monde conversationnel du `ChatAgent`.
 
 **Justification** : éviter une double friction de consentement.
+
+**Révision (ADR-035)** : l'`assignee` du `TaskMessage` produit par `submit_task` n'est plus
+`cortex` mais l'agent résolu par le qualificateur (`claude`/`codex`).
 
 ---
 
@@ -476,6 +498,69 @@ du projet. Les workspaces rattachés ne servent qu'en fallback de lecture pour l
 
 **Justification** : le workspace interne est toujours présent et porte la source de vérité
 du cadrage projet.
+
+---
+
+### ADR-034 — Qualificateur hybride de routage (règles + repli LLM)
+**Statut** : ✅ Acté (2026-06-28)
+
+**Décision** : un composant `TaskQualifier` classe toute tâche déléguée en catégorie métier
+(`CODING`/`ANALYSIS`/`BUILD`) par des règles de mots-clés déterministes d'abord, avec un repli
+petit LLM uniquement sur les cas ambigus et un défaut de sûreté sinon. La catégorie est ensuite
+résolue en agent via la table `mm.agents.routing`. Chaque décision porte sa `source`
+(`RULES`/`LLM`/`FALLBACK_DEFAULT`).
+
+**Alternative écartée** : tout-LLM (variance, latence, coût) ou tout-règles (fragile sur le
+langage naturel).
+
+**Justification** : supprimer la variance du routage tout en restant tolérant au langage libre.
+Réintroduit, sous forme déterministe et bornée, le « pré-qualificateur » prévu dans la conception
+générale (§7.3) et retiré par ADR-026.
+
+---
+
+### ADR-035 — Routage direct conversation → spécialiste
+**Statut** : ✅ Acté (2026-06-28)
+
+**Décision** : pour le flux conversationnel, `submit_task` route directement vers le spécialiste
+qualifié (`claude`/`codex`) au lieu de passer par `cortex`. Cortex reste l'orchestrateur du flux
+REST `/api/tasks`.
+
+**Alternative écartée** : continuer à router vers Cortex puis espérer une `sub_task` avec le bon
+`assignee` (trois décisions LLM empilées → routage aléatoire, cause d'origine du problème).
+
+**Justification** : déterminisme et garantie que les tâches de code atteignent réellement
+Claude/Codex. Limite assumée : l'orchestration multi-étapes par Cortex n'opère plus depuis le
+chat (à réintroduire via une catégorie `ORCHESTRATION → cortex` si le besoin se confirme).
+
+---
+
+### ADR-036 — Un seul cerveau de routage (suppression du double dispatch)
+**Statut** : ✅ Acté (2026-06-28)
+
+**Décision** : suppression de `TaskDispatcher`, `TaskRouter`, `CodingTaskController` et
+`ManualCodingAgentController`. La logique de routage déterministe par catégorie est recentrée
+dans le `TaskQualifier`. Seul subsiste le chemin `TaskQueue → Dispatcher → spécialistes`.
+
+**Justification** : il existait deux systèmes de routage divergents (LLM par `assignee` vs
+déterministe par `category`), ce dernier branché uniquement sur un endpoint REST de test —
+source d'incohérence et de confusion.
+
+---
+
+### ADR-037 — Fermeture de boucle via `TaskOutcomeListener`
+**Statut** : ✅ Acté (2026-06-28)
+
+**Décision** : interface noyau `TaskOutcomeListener` notifiée par le `Dispatcher` en fin de
+tâche utilisateur. L'hôte (`ConversationTaskOutcomeListener`) enregistre le résultat dans
+`conversation_task` (statut final, résumé, agent, catégorie, `completed_at` — migration V6) et
+réinjecte un résumé du résultat dans la mémoire de la conversation source.
+
+**Alternative écartée** : coupler le noyau à la persistance JPA / `ChatMemory` (violation des
+frontières mm-core).
+
+**Justification** : enregistrement requêtable des actions et de leurs résultats, et continuité
+de contexte conversationnel, sans casser la pureté du noyau.
 
 ---
 
