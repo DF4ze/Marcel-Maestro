@@ -85,7 +85,7 @@ curl -X DELETE http://localhost:8080/api/tasks/{taskId}   # STOP
 ```
 
 Une fois Telegram configuré : notifications de fin de tâche / blocage, HITL interactif par
-boutons inline, et commandes `/stop`, `/status`.
+boutons inline, et commandes `/stop`, `/status`, `/brief`, `/switch`, `/conversations`, `/conv`, `/new`.
 
 ## Avancement (roadmap V1)
 

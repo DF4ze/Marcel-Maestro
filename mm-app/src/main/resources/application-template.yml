@@ -76,6 +76,15 @@ mm:
     pool-size: 4
     queue-capacity: 50
 
+  # Agents spécialistes CLI externes
+  agents:
+    claude:
+      binary: claude
+      timeout-minutes: 30
+    codex:
+      binary: codex
+      timeout-minutes: 30
+
   # Étape 8 — Pilotage & observabilité
   journal:
     base-path: ./logs/journal

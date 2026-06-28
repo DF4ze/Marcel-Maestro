@@ -1,0 +1,173 @@
+{
+  "info": {
+    "name": "Marcel Maestro - CodingAgentAdapter Step 5",
+    "_postman_id": "f28e5a02-4eb7-4709-9321-5818e3269d3c",
+    "description": "Validation manuelle des endpoints locaux de test ClaudeCodeAgent / CodexAgent.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "workingDirectory", "value": "D:/Documents/Spring/Marcel-Maestro" }
+  ],
+  "item": [
+    {
+      "name": "1 - Preflight",
+      "item": [
+        {
+          "name": "GET preflight",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('claude/codex presents', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('claude');",
+                  "  pm.expect(body).to.have.property('codex');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/internal/manual/coding-agents/preflight"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Claude",
+      "item": [
+        {
+          "name": "POST execute claude",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('status present', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('status');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Validation manuelle Claude\",\n  \"description\": \"Analyse le contexte ci-dessous puis termine IMPERATIVEMENT par un bloc <MARCEL_REPORT> JSON valide. Si tout est lisible, retourne status DONE et un summary court.\",\n  \"projectMd\": \"# PROJECT\\nProjet de test manuel CodingAgentAdapter\",\n  \"roadmapResultMd\": \"# ROADMAP RESULT\\nEtape 5 en validation manuelle\",\n  \"c3Facts\": [\n    \"Le projet cible est Marcel-Maestro\",\n    \"Le test porte sur l adaptateur Claude\"\n  ],\n  \"workingDirectory\": \"{{workingDirectory}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/manual/coding-agents/claude/execute"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Codex",
+      "item": [
+        {
+          "name": "POST execute codex",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('status present', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('status');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Validation manuelle Codex\",\n  \"description\": \"Analyse le contexte ci-dessous puis termine IMPERATIVEMENT par un bloc <MARCEL_REPORT> JSON valide. Si tout est lisible, retourne status DONE et un summary court.\",\n  \"projectMd\": \"# PROJECT\\nProjet de test manuel CodingAgentAdapter\",\n  \"roadmapResultMd\": \"# ROADMAP RESULT\\nEtape 5 en validation manuelle\",\n  \"c3Facts\": [\n    \"Le projet cible est Marcel-Maestro\",\n    \"Le test porte sur l adaptateur Codex\"\n  ],\n  \"workingDirectory\": \"{{workingDirectory}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/manual/coding-agents/codex/execute"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Cas d'erreur",
+      "item": [
+        {
+          "name": "POST unknown agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('status KO', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('KO');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Agent inconnu\",\n  \"description\": \"Test d erreur agentId inconnu\",\n  \"projectMd\": \"# PROJECT\\nTest\",\n  \"roadmapResultMd\": \"# ROADMAP RESULT\\nTest\",\n  \"c3Facts\": [],\n  \"workingDirectory\": \"{{workingDirectory}}\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/manual/coding-agents/inconnu/execute"
+          }
+        },
+        {
+          "name": "POST invalid working directory",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('status present', function () {",
+                  "  var body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('status');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Working dir invalide\",\n  \"description\": \"Retourne un MARCEL_REPORT JSON valide.\",\n  \"projectMd\": \"# PROJECT\\nTest\",\n  \"roadmapResultMd\": \"# ROADMAP RESULT\\nTest\",\n  \"c3Facts\": [],\n  \"workingDirectory\": \"D:\\\\dossier\\\\inexistant\\\\mm\"\n}"
+            },
+            "url": "{{baseUrl}}/internal/manual/coding-agents/codex/execute"
+          }
+        }
+      ]
+    }
+  ]
+}

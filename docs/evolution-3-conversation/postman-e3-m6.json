@@ -2,7 +2,7 @@
   "info": {
     "name": "Marcel Maestro - E3-M6",
     "_postman_id": "be9570b4-c39f-4ba8-9ef6-2d26c1f5f451",
-    "description": "Plan de test E3-M6 : SSE + conversation_task + verification REST du flux Telegram.",
+    "description": "Plan de test E3-M6 : SSE + conversation_task + brief de conversation + verification REST du flux Telegram.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -92,7 +92,19 @@
       ]
     },
     {
-      "name": "5 - Cleanup",
+      "name": "5 - brief",
+      "item": [
+        {
+          "name": "Get conversation brief",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationId}}/brief"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 - Cleanup",
       "item": [
         {
           "name": "Delete conversation",

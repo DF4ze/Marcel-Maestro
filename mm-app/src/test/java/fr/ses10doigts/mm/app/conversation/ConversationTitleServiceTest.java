@@ -163,8 +163,8 @@ class ConversationTitleServiceTest {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("generateTitle — erreur LLM : title reste null, pas de retry")
-    void generateTitle_llmError_titleRemainsNull() {
+    @DisplayName("generateTitle — erreur LLM : le titre existant est conserve, pas de retry")
+    void generateTitle_llmError_existingTitleRemainsUnchanged() {
         // Arrange : mock ChatClient pour lever une exception
         ChatClientRequestSpec requestSpec = mock(ChatClientRequestSpec.class);
         when(chatClient.prompt()).thenReturn(requestSpec);
@@ -173,13 +173,15 @@ class ConversationTitleServiceTest {
         when(requestSpec.call()).thenReturn(callResponseSpec);
         when(callResponseSpec.content()).thenThrow(new RuntimeException("LLM unavailable"));
 
+        String existingTitle = conversation.getTitle();
+
         // Act : ne doit pas lever d'exception
         titleService.generateTitle(conversation.getId(), "Première tâche");
 
-        // Assert : title est toujours null
+        // Assert : le titre existant n'est pas écrasé si l'appel LLM échoue
         Optional<ConversationEntity> updated = conversationRepository.findById(conversation.getId());
         assertThat(updated).isPresent();
-        assertThat(updated.get().getTitle()).isNull();
+        assertThat(updated.get().getTitle()).isEqualTo(existingTitle);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

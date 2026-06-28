@@ -1,6 +1,7 @@
 package fr.ses10doigts.mm.app;
 
 import fr.ses10doigts.mm.app.project.WorkspaceProperties;
+import fr.ses10doigts.mm.app.specialist.coding.CodingAgentsProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -16,7 +17,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
  * pour que {@code ProjectService} connaisse le dossier racine des projets.</p>
  */
 @SpringBootApplication
-@EnableConfigurationProperties(WorkspaceProperties.class)
+@EnableConfigurationProperties({WorkspaceProperties.class, CodingAgentsProperties.class})
 public class MarcelMaestroApplication {
 
     public static void main(String[] args) {

@@ -53,7 +53,8 @@ Règle d'or : le ChatAgent discute et délègue ; l'AgentLoop exécute.
 Le premier incrément utile est le mode batch (`.call()`). Il ferme le trou principal :
 le endpoint conversationnel répond enfin.
 
-Le SSE reste prévu plus tard. L'ordre retenu est volontaire :
+Le SSE a ensuite été ajouté en Spring MVC pur via `SseEmitter`, sans WebFlux.
+L'ordre retenu était volontaire :
 1. rendre la conversation utile ;
 2. stabiliser la sémantique conversation/tâche ;
 3. ajouter ensuite le flux tokenisé.
@@ -121,16 +122,31 @@ Compléments effectivement apportés au-delà du besoin initial :
   `/archive` et `/delete` passent désormais par un même parcours projet -> conversation -> action ;
 - les projets sont triés par activité récente dans ces vues ;
 - le projet système `Autre` y est visible mais protégé, avec archivage/suppression masqués.
+- un `switch` de projet sans conversation explicite ne crée pas de conversation immédiatement :
+  la conversation Telegram est créée paresseusement au premier message libre, pour éviter les
+  conversations fantômes sans contenu.
 
-### 2.7 Lien conversation ↔ tâches (E3-M6)
+### 2.7 Brief de conversation
 
-Le lien persistant conversation ↔ tâches reste prévu mais pas encore implémenté.
-La cible est une table de jointure `conversation_task` pour tracer :
+Un service dédié `ConversationBriefService` produit maintenant un brief ponctuel d'une conversation :
+- en REST via `GET /projects/{pId}/conversations/{id}/brief` ;
+- en Telegram via `/brief` sur la conversation active.
+
+Le brief :
+- relit l'historique courant depuis `ChatMemory` ;
+- reconstruit un transcript borné ;
+- appelle le LLM avec un prompt dédié de synthèse ;
+- ne persiste pas le résumé dans la mémoire conversationnelle.
+
+### 2.8 Lien conversation ↔ tâches (E3-M6)
+
+Le lien persistant conversation ↔ tâches est maintenant implémenté via `conversation_task`
+pour tracer :
 - quelle conversation a lancé quelle tâche ;
 - quelles tâches sont liées à une conversation ;
 - quel retour doit être réinjecté ou notifié.
 
-### 2.8 Contexte projet enrichi (E3-M3)
+### 2.9 Contexte projet enrichi (E3-M3)
 
 Le `ChatAgent` reçoit en contexte le contenu de `PROJECT.md` et `ROADMAP.md` quand ils existent.
 Un outil `read_project_file` lui permet de lire d'autres fichiers du projet à la demande.
@@ -145,7 +161,7 @@ Le nommage cible est maintenant :
 Une compatibilité descendante est conservée en lecture pour les variantes legacy en minuscules
 (`project.md`, `roadmap.md`) sur les projets plus anciens.
 
-### 2.9 Amorçage mécanique du cadrage projet
+### 2.10 Amorçage mécanique du cadrage projet
 
 Après les premiers tests manuels post-E3-M3, le comportement cible a été clarifié :
 la première conversation d'un projet neuf n'est pas une conversation libre. C'est une
@@ -167,7 +183,7 @@ La roadmap ne suit pas ce mode automatiquement. Le premier message de cadrage do
 que la roadmap sera traitée plus tard, uniquement si l'utilisateur le demande, dans une
 discussion dédiée à sa construction.
 
-### 2.10 Résolution des fichiers projet avec plusieurs dossiers rattachés
+### 2.11 Résolution des fichiers projet avec plusieurs dossiers rattachés
 
 Un projet peut posséder plusieurs dossiers rattachés.
 
@@ -196,11 +212,14 @@ Aucune migration spécifique n'a été nécessaire pour :
 - la redirection/fallback de lecture projet ;
 - la gestion applicative des conversations.
 
-### E3-M6 — table `conversation_task`
+### E3-M6 — activité conversation + table `conversation_task`
 
-Migration prévue :
+Migrations désormais en place :
 
 ```sql
+ALTER TABLE conversation ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE conversation ADD COLUMN last_message_at TEXT;
+
 CREATE TABLE conversation_task (
     id               TEXT PRIMARY KEY,
     conversation_id  TEXT NOT NULL REFERENCES conversation(id) ON DELETE CASCADE,
@@ -221,9 +240,12 @@ CREATE TABLE conversation_task (
 | Méthode | Endpoint | Comportement |
 |---------|----------|--------------|
 | `POST` | `/projects/{pId}/conversations/{id}/messages` | appelle le LLM et retourne la réponse assistant |
+| `POST` | `/projects/{pId}/conversations/{id}/messages` + `Accept: text/event-stream` | diffuse les tokens en SSE puis `[DONE]` |
 | `GET` | `/projects/{pId}/conversations` | liste les conversations du projet |
 | `PATCH` | `/projects/{pId}/conversations/{id}` | renomme une conversation |
 | `POST` | `/projects/{pId}/conversations/{id}/archive` | archive une conversation |
+| `GET` | `/projects/{pId}/conversations/{id}/tasks` | liste les tâches liées à la conversation |
+| `GET` | `/projects/{pId}/conversations/{id}/brief` | retourne un brief synthétique de la conversation |
 
 Réponse actuelle de `POST /messages` :
 
@@ -234,7 +256,7 @@ Réponse actuelle de `POST /messages` :
 }
 ```
 
-Le SSE reste hors scope tant que E3-M6 n'est pas entamé.
+Le SSE est maintenant actif en Spring MVC pur, sans WebFlux.
 
 ---
 
@@ -260,13 +282,29 @@ Compléments effectivement livrés :
 `POST /{id}/messages` délègue à `ConversationService.chat()` et renvoie directement la réponse
 assistant. On n'est plus sur un endpoint de stockage passif.
 
+Compléments maintenant livrés :
+- routage de contenu selon `Accept` entre batch JSON et SSE ;
+- endpoint `GET /{id}/tasks` pour exposer `conversation_task` ;
+- endpoint `GET /{id}/brief` pour produire une synthèse ponctuelle.
+
+### `ConversationBriefService` (mm-app)
+
+Nouveau service applicatif dédié au résumé :
+- relit la conversation persistée ;
+- construit un transcript borné ;
+- appelle le LLM avec un prompt dédié de brief ;
+- retourne un texte de synthèse sans l'ajouter à l'historique.
+
 ### `TelegramSessionService` et `TelegramMmController` (mm-app)
 
 Le `conversationId` actif est conservé par `chatId`.
 
 Résultats :
 - les messages successifs Telegram restent dans la même conversation ;
+- la conversation n'est créée qu'au premier message libre après un switch de projet si aucune
+  conversation n'a été explicitement reprise ;
 - `/reset` repart sur une nouvelle conversation ;
+- `/brief` résume la conversation active ;
 - les bugs de recréation systématique de conversation sont supprimés ;
 - les messages libres Telegram passent par le même flux conversationnel que le REST ;
 - les commandes slash sont court-circuitées avant tout envoi au LLM ;
@@ -368,8 +406,8 @@ des fichiers projet. Pas de classifier externe.
 ### ADR-027 — Batch d'abord, SSE plus tard
 **Statut** : ✅ Acté
 
-**Décision** : le premier incrément utile est le mode batch. Le streaming SSE reste prévu
-pour E3-M6.
+**Décision** : le premier incrément utile est le mode batch. Le streaming SSE est ajouté ensuite
+sur la même route via négociation `Accept`.
 
 **Justification** : fermer d'abord le trou fonctionnel principal.
 
@@ -521,13 +559,20 @@ complet reste à finaliser et stabiliser.
 - tri des projets par activité récente dans ces vues ;
 - protection explicite du projet système `Autre` dans les parcours Telegram et service.
 
-### E3-M6 — Streaming SSE + lien conversation ↔ tâches 📋
+### E3-M6 — Streaming SSE + lien conversation ↔ tâches ✅ `done` (2026-06-28)
 
-**Cible** :
+**Livrables** :
 - streaming SSE sur `POST /messages` ;
 - persistance du message assistant assemblé en fin de flux ;
 - table `conversation_task` ;
 - endpoint de consultation des tâches liées à une conversation.
+
+**Compléments effectivement livrés** :
+- propriété `mm.chat.sse.timeout-ms` dans la configuration ;
+- endpoint `GET /brief` pour le résumé ponctuel ;
+- commande Telegram `/brief` ;
+- libellés Telegram avec icônes de navigation ;
+- règle explicite de création paresseuse de conversation après `/switch`.
 
 ---
 
