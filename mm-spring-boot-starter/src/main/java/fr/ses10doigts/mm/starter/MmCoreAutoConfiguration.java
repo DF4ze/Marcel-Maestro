@@ -392,9 +392,11 @@ public class MmCoreAutoConfiguration {
     public ProjectContextExtension projectContextExtension(
             AgentContextHolder contextHolder,
             ProjectRepository projectRepository,
+            ProjectWorkspaceRepository projectWorkspaceRepository,
             PathValidator pathValidator,
             @Value("${mm.chat.context.max-chars-per-file:3000}") int maxCharsPerFile) {
-        return new ProjectContextExtension(contextHolder, projectRepository, pathValidator, maxCharsPerFile);
+        return new ProjectContextExtension(
+                contextHolder, projectRepository, projectWorkspaceRepository, pathValidator, maxCharsPerFile);
     }
 
     // AgentLoop

@@ -5,6 +5,8 @@ import fr.ses10doigts.mm.core.memory.MemoryEntry;
 import fr.ses10doigts.mm.core.memory.MemoryStore;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.mm.starter.project.ProjectRepository;
+import fr.ses10doigts.mm.starter.project.ProjectWorkspaceEntity;
+import fr.ses10doigts.mm.starter.project.ProjectWorkspaceRepository;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -19,7 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Construit le contexte enrichi d'une mission Claude/Codex à partir du projet courant.
+ * Construit le contexte enrichi d'une mission Claude/Codex a partir du projet courant.
  */
 @Component
 @RequiredArgsConstructor
@@ -31,13 +33,14 @@ public class CodingMissionContextBuilder {
             List.of("roadmap_result.md", "ROADMAP_RESULT.md", "ROADMAP.md", "roadmap.md");
 
     private final ProjectRepository projectRepository;
+    private final ProjectWorkspaceRepository projectWorkspaceRepository;
     private final MemoryStore memoryStore;
 
     /**
-     * Charge le projet, ses fichiers de contexte et les faits mémoire pertinents.
+     * Charge le projet, ses fichiers de contexte et les faits memoire pertinents.
      *
-     * @param ctx contexte moteur transporté par le {@code TaskMessage}
-     * @return contexte Marcel complet prêt à être injecté au spécialiste CLI
+     * @param ctx contexte moteur transporte par le {@code TaskMessage}
+     * @return contexte Marcel complet pret a etre injecte au specialiste CLI
      */
     public MarcelContext build(AgentContext ctx) {
         String projectId = ctx.projectId();
@@ -48,25 +51,50 @@ public class CodingMissionContextBuilder {
         ProjectEntity project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalStateException("Projet introuvable pour projectId=" + projectId));
         Path workspacePath = Path.of(project.getWorkspacePath()).toAbsolutePath().normalize();
+        List<Path> declaredWorkspaces = loadDeclaredWorkspaces(projectId, workspacePath);
+        Path workingDirectory = determineWorkingDirectory(workspacePath, declaredWorkspaces);
 
         MarcelContext context = MarcelContext.builder()
                 .projectMd(readFirstExistingFile(workspacePath, PROJECT_FILES).orElse(""))
                 .roadmapResultMd(readFirstExistingFile(workspacePath, ROADMAP_RESULT_FILES).orElse(""))
                 .c3Facts(loadFacts(ctx))
-                .workingDirectory(workspacePath.toString())
+                .workingDirectory(workingDirectory.toString())
+                .declaredWorkspaces(declaredWorkspaces.stream().map(Path::toString).toList())
                 .build();
 
-        log.debug("CodingMissionContextBuilder — projectId={}, workingDirectory={}, facts={}",
-                projectId, context.getWorkingDirectory(), context.getC3Facts().size());
+        log.debug("CodingMissionContextBuilder - projectId={}, workingDirectory={}, declaredWorkspaces={}, facts={}",
+                projectId, context.getWorkingDirectory(), context.getDeclaredWorkspaces(), context.getC3Facts().size());
         return context;
+    }
+
+    private List<Path> loadDeclaredWorkspaces(String projectId, Path primaryWorkspace) {
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
+        roots.add(primaryWorkspace);
+
+        List<ProjectWorkspaceEntity> attachedWorkspaces = projectWorkspaceRepository.findAllByProjectId(projectId);
+        if (attachedWorkspaces != null) {
+            attachedWorkspaces.stream()
+                    .map(ProjectWorkspaceEntity::getPath)
+                    .filter(path -> path != null && !path.isBlank())
+                    .map(path -> Path.of(path).toAbsolutePath().normalize())
+                    .forEach(roots::add);
+        }
+        return List.copyOf(roots);
+    }
+
+    private Path determineWorkingDirectory(Path primaryWorkspace, List<Path> declaredWorkspaces) {
+        return declaredWorkspaces.stream()
+                .filter(candidate -> declaredWorkspaces.stream().allMatch(root -> root.startsWith(candidate)))
+                .min((left, right) -> Integer.compare(left.getNameCount(), right.getNameCount()))
+                .orElse(primaryWorkspace);
     }
 
     /**
      * Cherche le premier fichier existant dans l'ordre fourni et renvoie son contenu.
      *
      * @param workspacePath racine du projet courant
-     * @param candidateFiles noms de fichiers acceptés
-     * @return contenu du premier fichier trouvé, sinon vide
+     * @param candidateFiles noms de fichiers acceptes
+     * @return contenu du premier fichier trouve, sinon vide
      */
     private Optional<String> readFirstExistingFile(Path workspacePath, List<String> candidateFiles) {
         for (String fileName : candidateFiles) {
@@ -79,10 +107,10 @@ public class CodingMissionContextBuilder {
     }
 
     /**
-     * Lit un fichier texte UTF-8 et remonte une erreur explicite si la lecture échoue.
+     * Lit un fichier texte UTF-8 et remonte une erreur explicite si la lecture echoue.
      *
-     * @param file fichier à lire
-     * @return contenu intégral du fichier
+     * @param file fichier a lire
+     * @return contenu integral du fichier
      */
     private String readFile(Path file) {
         try {
@@ -93,10 +121,10 @@ public class CodingMissionContextBuilder {
     }
 
     /**
-     * Agrège les faits globaux et projet, puis élimine les doublons vides.
+     * Agrege les faits globaux et projet, puis elimine les doublons vides.
      *
      * @param ctx contexte moteur courant
-     * @return liste stable de faits à injecter dans le mission brief
+     * @return liste stable de faits a injecter dans le mission brief
      */
     private List<String> loadFacts(AgentContext ctx) {
         List<MemoryEntry> globalFacts = memoryStore.findByScope("global", ctx);
@@ -109,10 +137,10 @@ public class CodingMissionContextBuilder {
     }
 
     /**
-     * Ajoute les valeurs de mémoire non vides dans l'ensemble de faits.
+     * Ajoute les valeurs de memoire non vides dans l'ensemble de faits.
      *
-     * @param target ensemble de déduplication
-     * @param entries entrées mémoire à convertir
+     * @param target ensemble de deduplication
+     * @param entries entrees memoire a convertir
      */
     private void addFacts(Set<String> target, List<MemoryEntry> entries) {
         if (entries == null || entries.isEmpty()) {

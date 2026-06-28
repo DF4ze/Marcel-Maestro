@@ -10,6 +10,7 @@ import fr.ses10doigts.mm.core.tool.ToolException;
 import fr.ses10doigts.mm.core.tool.ToolResult;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.mm.starter.project.ProjectRepository;
+import fr.ses10doigts.mm.starter.project.ProjectWorkspaceRepository;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -31,11 +32,14 @@ public class WriteFileTool implements AgentTool {
 
     private final Path workspaceRoot;
     private final ProjectRepository projectRepository;
+    private final ProjectWorkspaceRepository projectWorkspaceRepository;
 
     public WriteFileTool(@Value("${mm.workspace.root:./workspace}") String workspaceRoot,
-                         ProjectRepository projectRepository) {
+                         ProjectRepository projectRepository,
+                         ProjectWorkspaceRepository projectWorkspaceRepository) {
         this.workspaceRoot = Path.of(workspaceRoot);
         this.projectRepository = projectRepository;
+        this.projectWorkspaceRepository = projectWorkspaceRepository;
     }
 
     @Override
@@ -108,6 +112,11 @@ public class WriteFileTool implements AgentTool {
 
         Path projectRelativePath = resolveProjectRelativePath(normalized, ctx);
         if (projectRelativePath != null) {
+            Path fallback = resolveAttachedWorkspacePath(ctx, requestedPath);
+            if (fallback != null) {
+                log.info("write_file : fallback workspace rattache '{}' -> '{}'", requestedPath, fallback);
+                return fallback;
+            }
             log.info("write_file : chemin relatif projet '{}' -> '{}'", requestedPath, projectRelativePath);
             return projectRelativePath;
         }
@@ -146,6 +155,24 @@ public class WriteFileTool implements AgentTool {
             return projectWorkspace.resolve(requested).normalize();
         } catch (InvalidPathException e) {
             throw new ToolException("Workspace projet invalide : " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Réutilise un fichier déjà présent dans un workspace annexe plutôt que d'écrire ailleurs.
+     */
+    private Path resolveAttachedWorkspacePath(AgentContext ctx, String requestedPath) throws ToolException {
+        if (ctx.projectId() == null || ctx.projectId().isBlank()) {
+            return null;
+        }
+        try {
+            return projectWorkspaceRepository.findAllByProjectId(ctx.projectId()).stream()
+                    .map(ws -> Path.of(ws.getPath()).toAbsolutePath().normalize().resolve(requestedPath).normalize())
+                    .filter(candidate -> Files.exists(candidate) && Files.isRegularFile(candidate))
+                    .findFirst()
+                    .orElse(null);
+        } catch (InvalidPathException e) {
+            throw new ToolException("Workspace rattache invalide : " + e.getMessage(), e);
         }
     }
 

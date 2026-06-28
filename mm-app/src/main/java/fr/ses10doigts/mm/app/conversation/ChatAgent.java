@@ -214,13 +214,14 @@ public class ChatAgent {
         }
 
         Path primaryPath = workspacePath.resolve(relativePath).normalize();
-        if (!primaryPath.startsWith(workspacePath)) {
-            log.warn("read_project_file - chemin rejete hors workspace projet: projectId={}, path={}",
-                    currentContext.projectId(), primaryPath);
-            return "Acces refuse : chemin hors du workspace du projet.";
+        Path readablePath;
+        try {
+            readablePath = resolveReadablePath(currentContext.projectId(), relativePath, workspacePath, primaryPath);
+        } catch (ToolException e) {
+            log.warn("read_project_file - acces refuse: projectId={}, path={}",
+                    currentContext.projectId(), primaryPath, e);
+            return "Acces refuse : chemin hors des workspaces autorises.";
         }
-
-        Path readablePath = resolveReadablePath(currentContext.projectId(), relativePath, primaryPath);
         if (readablePath == null) {
             return "Fichier introuvable dans le workspace du projet : " + relativePath;
         }
@@ -238,15 +239,28 @@ public class ChatAgent {
         }
     }
 
-    private Path resolveReadablePath(String projectId, String relativePath, Path primaryPath) {
+    private Path resolveReadablePath(String projectId, String relativePath, Path workspacePath, Path primaryPath)
+            throws ToolException {
+        ToolException primaryValidationError = null;
         try {
             pathValidator.validatePath(primaryPath.toString(), projectId);
             if (Files.exists(primaryPath) && Files.isRegularFile(primaryPath)) {
                 return primaryPath;
             }
         } catch (ToolException e) {
-            log.warn("read_project_file - validation refusee: projectId={}, path={}", projectId, primaryPath, e);
-            return null;
+            primaryValidationError = e;
+            if (!primaryPath.startsWith(workspacePath)) {
+                log.info("read_project_file - chemin interne hors workspace principal, tentative annexe: projectId={}, path={}",
+                        projectId, primaryPath);
+            } else {
+                log.warn("read_project_file - validation refusee: projectId={}, path={}",
+                        projectId, primaryPath, e);
+            }
+        }
+
+        if (!primaryPath.startsWith(workspacePath)) {
+            log.info("read_project_file - chemin interne hors workspace principal, fallback annexe: projectId={}, path={}",
+                    projectId, primaryPath);
         }
 
         List<Path> candidates = projectWorkspaceRepository.findAllByProjectId(projectId).stream()
@@ -265,6 +279,9 @@ public class ChatAgent {
                 log.debug("read_project_file - candidate externe refuse: projectId={}, path={}",
                         projectId, candidate, e);
             }
+        }
+        if (primaryValidationError != null) {
+            throw primaryValidationError;
         }
         return null;
     }

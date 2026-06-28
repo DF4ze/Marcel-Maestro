@@ -28,12 +28,13 @@ class ProjectContextFileRoutingTest {
         Path globalWorkspace = Files.createDirectories(tempDir.resolve("workspace"));
         Path projectWorkspace = Files.createDirectories(globalWorkspace.resolve("projet-a"));
         ProjectRepository projectRepository = mock(ProjectRepository.class);
+        ProjectWorkspaceRepository workspaceRepository = mock(ProjectWorkspaceRepository.class);
         when(projectRepository.findById("project-a")).thenReturn(Optional.of(ProjectEntity.builder()
                 .id("project-a")
                 .workspacePath(projectWorkspace.toString())
                 .build()));
 
-        WriteFileTool tool = new WriteFileTool(globalWorkspace.toString(), projectRepository);
+        WriteFileTool tool = new WriteFileTool(globalWorkspace.toString(), projectRepository, workspaceRepository);
         ToolResult result = tool.execute(
                 Map.of("path", "workspace/PROJECT.md", "content", "contenu projet"),
                 AgentContext.of("default", "project-a", "conv-1", "task-1"));
@@ -50,12 +51,13 @@ class ProjectContextFileRoutingTest {
         Path globalWorkspace = Files.createDirectories(tempDir.resolve("workspace"));
         Path projectWorkspace = Files.createDirectories(globalWorkspace.resolve("autre"));
         ProjectRepository projectRepository = mock(ProjectRepository.class);
+        ProjectWorkspaceRepository workspaceRepository = mock(ProjectWorkspaceRepository.class);
         when(projectRepository.findById("project-autre")).thenReturn(Optional.of(ProjectEntity.builder()
                 .id("project-autre")
                 .workspacePath(projectWorkspace.toString())
                 .build()));
 
-        WriteFileTool tool = new WriteFileTool(globalWorkspace.toString(), projectRepository);
+        WriteFileTool tool = new WriteFileTool(globalWorkspace.toString(), projectRepository, workspaceRepository);
         ToolResult result = tool.execute(
                 Map.of("path", "TOTO.txt", "content", "contenu autre"),
                 AgentContext.of("default", "project-autre", "conv-1", "task-1"));
@@ -129,5 +131,33 @@ class ProjectContextFileRoutingTest {
 
         assertThat(result.success()).isTrue();
         assertThat(result.data()).isEqualTo("external source");
+    }
+
+    @Test
+    @DisplayName("write_file met a jour un fichier existant dans un workspace rattache")
+    void writeFile_updatesExistingFileInAttachedWorkspace(@TempDir Path tempDir) throws Exception {
+        Path globalWorkspace = Files.createDirectories(tempDir.resolve("workspace"));
+        Path projectWorkspace = Files.createDirectories(globalWorkspace.resolve("projet-d"));
+        Path externalWorkspace = Files.createDirectories(tempDir.resolve("repo-externe"));
+        Files.createDirectories(externalWorkspace.resolve("src"));
+        Path externalFile = externalWorkspace.resolve("src/Main.java");
+        Files.writeString(externalFile, "class Before {}", StandardCharsets.UTF_8);
+
+        ProjectRepository projectRepository = mock(ProjectRepository.class);
+        ProjectWorkspaceRepository workspaceRepository = mock(ProjectWorkspaceRepository.class);
+        when(projectRepository.findById("project-d")).thenReturn(Optional.of(ProjectEntity.builder()
+                .id("project-d")
+                .workspacePath(projectWorkspace.toString())
+                .build()));
+        when(workspaceRepository.findAllByProjectId("project-d")).thenReturn(List.of(
+                ProjectWorkspaceEntity.builder().id("ws-1").path(externalWorkspace.toString()).build()));
+
+        WriteFileTool tool = new WriteFileTool(globalWorkspace.toString(), projectRepository, workspaceRepository);
+        ToolResult result = tool.execute(
+                Map.of("path", "src/Main.java", "content", "class After {}"),
+                AgentContext.of("default", "project-d", "conv-1", "task-1"));
+
+        assertThat(result.success()).isTrue();
+        assertThat(Files.readString(externalFile, StandardCharsets.UTF_8)).isEqualTo("class After {}");
     }
 }

@@ -58,17 +58,20 @@ public class ProjectBootstrapService {
         String bootstrapConversationId = readConfig(project.get().getConfig())
                 .path(BOOTSTRAP_CONVERSATION_ID_KEY)
                 .asText(null);
-        return conversationId.equals(bootstrapConversationId);
+        return conversationId.equals(bootstrapConversationId) && hasBootstrapPendingMarker(project.get());
     }
 
     @Transactional
     public void appendUserInputToProject(String projectId, String conversationId, String userMessage) {
-        if (!isBootstrapConversation(projectId, conversationId) || userMessage == null || userMessage.isBlank()) {
+        if (userMessage == null || userMessage.isBlank()) {
             return;
         }
 
         ProjectEntity project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ProjectNotFoundException(projectId));
+        if (!isRegisteredBootstrapConversation(project, conversationId)) {
+            return;
+        }
         Path projectFile = resolveProjectFile(project);
         String existingContent;
         try {
@@ -90,6 +93,19 @@ public class ProjectBootstrapService {
         log.info("PROJECT.md enrichi automatiquement — projectId={}, conversationId={}", projectId, conversationId);
     }
 
+    /**
+     * Vérifie que la conversation cible correspond bien au cadrage initial enregistré.
+     */
+    private boolean isRegisteredBootstrapConversation(ProjectEntity project, String conversationId) {
+        if (project == null || conversationId == null || conversationId.isBlank()) {
+            return false;
+        }
+        String bootstrapConversationId = readConfig(project.getConfig())
+                .path(BOOTSTRAP_CONVERSATION_ID_KEY)
+                .asText(null);
+        return conversationId.equals(bootstrapConversationId);
+    }
+
     private Path resolveProjectFile(ProjectEntity project) {
         Path workspacePath;
         try {
@@ -102,6 +118,19 @@ public class ProjectBootstrapService {
             return uppercase;
         }
         return workspacePath.resolve(LEGACY_PROJECT_FILE_NAME);
+    }
+
+    private boolean hasBootstrapPendingMarker(ProjectEntity project) {
+        Path projectFile = resolveProjectFile(project);
+        if (!Files.exists(projectFile)) {
+            return false;
+        }
+        try {
+            String content = Files.readString(projectFile, StandardCharsets.UTF_8);
+            return content.contains(BOOTSTRAP_PENDING_MARKER);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Impossible de lire PROJECT.md pour le projet " + project.getId(), e);
+        }
     }
 
     private ObjectNode readConfig(String rawConfig) {

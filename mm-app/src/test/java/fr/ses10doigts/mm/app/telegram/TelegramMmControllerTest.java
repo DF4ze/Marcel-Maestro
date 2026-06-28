@@ -18,6 +18,7 @@ import fr.ses10doigts.mm.starter.project.ProjectStatus;
 import fr.ses10doigts.telegrambots.model.TelegramUpdateContext;
 import fr.ses10doigts.telegrambots.model.TelegramView;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -558,6 +559,37 @@ class TelegramMmControllerTest {
                 42L,
                 TelegramSessionService.NavigationIntent.SWITCH,
                 List.of("p1", "p2"));
+    }
+
+    @Test
+    @DisplayName("/projects affiche un point vert sur le projet actif")
+    void projects_marksActiveProject() {
+        TelegramSessionService sessionService = mock(TelegramSessionService.class);
+        TelegramMmController controller = new TelegramMmController(
+                emptyProvider(),
+                emptyProvider(),
+                emptyProvider(),
+                emptyProvider(),
+                emptyProvider(),
+                sessionService);
+        TelegramUpdateContext ctx = mock(TelegramUpdateContext.class);
+        when(ctx.getChatId()).thenReturn(42L);
+        when(sessionService.listActiveProjectsByRecentActivity()).thenReturn(List.of(
+                ProjectEntity.builder().id("p1").name("Projet Alpha").build(),
+                ProjectEntity.builder().id("p2").name("Projet Beta").build()
+        ));
+        when(sessionService.countOpenConversationsByProjects(List.of("p1", "p2"))).thenReturn(Map.of(
+                "p1", 2L,
+                "p2", 1L
+        ));
+        when(sessionService.resolveProjectId(42L)).thenReturn(Optional.of("p2"));
+
+        Object result = controller.projects(ctx);
+
+        assertThat(result).isInstanceOf(TelegramView.class);
+        TelegramView view = (TelegramView) result;
+        assertThat(view.getButtons().get(0).getFirst().getText()).isEqualTo("📁 Projet Alpha (2)");
+        assertThat(view.getButtons().get(1).getFirst().getText()).isEqualTo("📁 Projet Beta 🟢 (1)");
     }
 
     @Test

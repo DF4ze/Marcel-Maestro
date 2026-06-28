@@ -73,4 +73,24 @@ class ProjectBootstrapServiceTest {
         assertThat(updated).contains("Le projet cible Spring Boot 3 et Java 21.");
         assertThat(updated).contains("<!-- MARCEL:PROJECT_BOOTSTRAP_NOTES -->");
     }
+
+    @Test
+    @DisplayName("isBootstrapConversation est désactivé si PROJECT.md n'a pas le marqueur bootstrap")
+    void isBootstrapConversation_withoutPendingMarker_returnsFalse(@TempDir Path tempDir) throws IOException {
+        Path workspace = Files.createDirectories(tempDir.resolve("workspace"));
+        Files.writeString(workspace.resolve("PROJECT.md"), "# PROJECT", StandardCharsets.UTF_8);
+
+        ProjectEntity project = ProjectEntity.builder()
+                .id("project-c")
+                .workspacePath(workspace.toString())
+                .config("{\"bootstrapConversationId\":\"conv-1\"}")
+                .build();
+
+        ProjectRepository projectRepository = mock(ProjectRepository.class);
+        when(projectRepository.findById("project-c")).thenReturn(Optional.of(project));
+
+        ProjectBootstrapService service = new ProjectBootstrapService(projectRepository, new ObjectMapper());
+
+        assertThat(service.isBootstrapConversation("project-c", "conv-1")).isFalse();
+    }
 }

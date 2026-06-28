@@ -979,7 +979,7 @@ public class TelegramMmController {
     private TelegramView buildNavigationProjectSelectionView(Long chatId, String text, List<ProjectEntity> projects) {
         List<String> projectIds = projects.stream().map(ProjectEntity::getId).toList();
         Map<String, Long> openCountByProject = sessionService.countOpenConversationsByProjects(projectIds);
-        Optional<String> activeProjectId = sessionService.getActiveProjectId(chatId);
+        Optional<String> activeProjectId = sessionService.resolveProjectId(chatId);
         List<List<TelegramButtonView>> buttons = new ArrayList<>();
         for (int i = 0; i < projects.size(); i++) {
             ProjectEntity project = projects.get(i);
@@ -987,7 +987,7 @@ public class TelegramMmController {
             String activeMarker = activeProjectId.filter(project.getId()::equals).isPresent()
                     ? " 🟢"
                     : "";
-            String label = String.format("📁 %s (%d)%s", project.getName(), openCount, activeMarker);
+            String label = String.format("📁 %s%s (%d)", project.getName(), activeMarker, openCount);
             buttons.add(List.of(new TelegramButtonView(label, CB_NAV_PROJECT_PREFIX + i)));
         }
         buttons.add(List.of(new TelegramButtonView("❌ Annuler", CB_CANCEL_MUTATION)));

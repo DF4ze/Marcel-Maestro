@@ -115,6 +115,23 @@ class ChatAgentReadProjectFileTest {
         assertThat(content).isEqualTo("class External {}");
     }
 
+    @Test
+    @DisplayName("Chemin sortant du workspace principal mais ciblant un workspace rattache - contenu retourne")
+    void readProjectFile_withParentTraversalIntoAttachedWorkspace_returnsContent(@TempDir Path tempDir)
+            throws IOException {
+        Path workspaceRoot = Files.createDirectories(tempDir.resolve("workspace-root"));
+        Path projectWorkspace = Files.createDirectories(workspaceRoot.resolve("project-f"));
+        Path attachedWorkspace = workspaceRoot.getParent();
+        Files.writeString(attachedWorkspace.resolve("pom.xml"), "<project/>", StandardCharsets.UTF_8);
+        when(projectWorkspaceRepository.findAllByProjectId("project-f")).thenReturn(List.of(
+                ProjectWorkspaceEntity.builder().id("ws-1").path(attachedWorkspace.toString()).build()));
+        ChatAgent chatAgent = newChatAgent(workspaceRoot, projectWorkspace, 5000, "project-f", attachedWorkspace);
+
+        String content = chatAgent.readProjectFile("../../pom.xml");
+
+        assertThat(content).isEqualTo("<project/>");
+    }
+
     private ChatAgent newChatAgent(Path workspaceRoot, Path projectWorkspace, int maxChars, String projectId) {
         return newChatAgent(workspaceRoot, projectWorkspace, maxChars, projectId, null);
     }

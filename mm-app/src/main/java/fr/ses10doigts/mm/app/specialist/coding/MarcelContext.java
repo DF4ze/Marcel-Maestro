@@ -15,4 +15,5 @@ public class MarcelContext {
     private final String roadmapResultMd;
     private final List<String> c3Facts;
     private final String workingDirectory;
+    private final List<String> declaredWorkspaces;
 }

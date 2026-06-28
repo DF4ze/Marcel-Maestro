@@ -13,6 +13,7 @@ import fr.ses10doigts.mm.core.tool.PathValidator;
 import fr.ses10doigts.mm.starter.hitl.AgentContextHolder;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.mm.starter.project.ProjectRepository;
+import fr.ses10doigts.mm.starter.project.ProjectWorkspaceRepository;
 import fr.ses10doigts.mm.starter.prompt.ProjectContextExtension;
 import fr.ses10doigts.mm.starter.prompt.ProjectSystemPromptExtension;
 import fr.ses10doigts.mm.starter.prompt.ToolsSystemPromptExtension;
@@ -36,6 +37,7 @@ class MarcelChatPromptComposerTest {
 
     private final AgentContextHolder contextHolder = new AgentContextHolder();
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
+    private final ProjectWorkspaceRepository projectWorkspaceRepository = mock(ProjectWorkspaceRepository.class);
 
     @AfterEach
     void tearDown() {
@@ -58,7 +60,12 @@ class MarcelChatPromptComposerTest {
 
         MarcelChatPromptComposer composer = new MarcelChatPromptComposer(List.of(
                 new ProjectSystemPromptExtension(contextHolder, projectRepository),
-                new ProjectContextExtension(contextHolder, projectRepository, new PathValidator(workspaceRoot), 3000)));
+                new ProjectContextExtension(
+                        contextHolder,
+                        projectRepository,
+                        projectWorkspaceRepository,
+                        new PathValidator(workspaceRoot),
+                        3000)));
         ReflectionTestUtils.setField(composer, "basePrompt", "Prompt de base Marcel");
 
         String prompt = composer.compose();

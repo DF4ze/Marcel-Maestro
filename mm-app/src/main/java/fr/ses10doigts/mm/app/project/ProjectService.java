@@ -70,6 +70,12 @@ public class ProjectService {
             - Contraintes
             - Décisions actées
             - Questions ouvertes
+
+            <!-- MARCEL:PROJECT_BOOTSTRAP_PENDING -->
+
+            ## Notes collectées pendant le cadrage
+
+            <!-- MARCEL:PROJECT_BOOTSTRAP_NOTES -->
             """;
     private static final String ROADMAP_FILE_TEMPLATE = """
             # ROADMAP

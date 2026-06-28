@@ -278,4 +278,24 @@ class ToolExecutionGuardTest {
             }
         };
     }
+    @Test
+    void contenuTexteAvecCheminWindows_neDoitPasEtreTraiteCommeUnPath() {
+        ScriptedHumanInteraction hitl = new ScriptedHumanInteraction().respond(ConsentDecision.ALLOW_ONCE);
+        HitlGuard hitlGuard = new HitlGuard(HitlPolicy.defaults(), new ConsentCache(), hitl);
+        WorkspaceRegistry registry = (path, projectId) -> {
+            throw new AssertionError("Le contenu libre ne doit pas etre passe au WorkspaceRegistry");
+        };
+        ToolExecutionGuard guard = new ToolExecutionGuard(hitlGuard, null, registry);
+        AgentTool tool = stubTool("write_file", RiskLevel.HIGH);
+
+        ToolResult result = guard.execute(tool, Map.of(
+                "path", "PROJECT.md",
+                "content", """
+                        Met a jour PROJECT.md avec:
+                        D:\\Documents\\Spring\\Marcel-Maestro\\docs\\coding_rules.md
+                        """
+        ), CTX);
+
+        assertTrue(result.success());
+    }
 }

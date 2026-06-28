@@ -4,6 +4,8 @@ import fr.ses10doigts.mm.core.agent.AgentContext;
 import fr.ses10doigts.mm.core.hitl.HitlGuard;
 import fr.ses10doigts.mm.core.hitl.HitlVerdict;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -165,16 +167,13 @@ public class ToolExecutionGuard {
      * @return le chemin dangereux, ou {@link Optional#empty()} si aucun n'est détecté
      */
     private Optional<String> findDangerousAbsolutePath(Map<String, Object> params) {
-        if (params == null) return Optional.empty();
-        for (Object value : params.values()) {
-            if (value instanceof String path && PathValidator.PATH_LIKE_PATTERN.matcher(path).find()) {
-                try {
-                    Path p = Path.of(path);
-                    if (p.isAbsolute() && SystemPathGuard.isDangerous(p.normalize())) {
-                        return Optional.of(path);
-                    }
-                } catch (Exception ignored) { /* chemin invalide → ignoré */ }
-            }
+        for (String path : extractCandidatePaths(params)) {
+            try {
+                Path p = Path.of(path);
+                if (p.isAbsolute() && SystemPathGuard.isDangerous(p.normalize())) {
+                    return Optional.of(path);
+                }
+            } catch (Exception ignored) { /* chemin invalide → ignoré */ }
         }
         return Optional.empty();
     }
@@ -203,17 +202,35 @@ public class ToolExecutionGuard {
         if (projectId == null || projectId.isBlank()) {
             return false;
         }
-        for (Object value : params.values()) {
-            if (value instanceof String path && PathValidator.PATH_LIKE_PATTERN.matcher(path).find()) {
-                if (workspaceRegistry.isInDeclaredWorkspace(path, projectId)) {
-                    log.info("Chemin '{}' dans workspace déclaré pour le projet '{}' — HITL write bypassé",
-                            path, projectId);
-                    return true;
-                }
-                log.debug("Chemin testé contre workspace déclaré : '{}' (projet '{}') → non déclaré",
+        for (String path : extractCandidatePaths(params)) {
+            if (workspaceRegistry.isInDeclaredWorkspace(path, projectId)) {
+                log.info("Chemin '{}' dans workspace déclaré pour le projet '{}' — HITL write bypassé",
                         path, projectId);
+                return true;
             }
+            log.debug("Chemin testé contre workspace déclaré : '{}' (projet '{}') → non déclaré",
+                    path, projectId);
         }
         return false;
+    }
+
+    private List<String> extractCandidatePaths(Map<String, Object> params) {
+        if (params == null || params.isEmpty()) {
+            return List.of();
+        }
+        List<String> candidates = new ArrayList<>();
+        params.forEach((key, value) -> {
+            if (!(value instanceof String path) || key == null) {
+                return;
+            }
+            String normalizedKey = key.toLowerCase();
+            if (!PathValidator.PATH_PARAM_KEYS.contains(normalizedKey)) {
+                return;
+            }
+            if (PathValidator.PATH_LIKE_PATTERN.matcher(path).find()) {
+                candidates.add(path);
+            }
+        });
+        return candidates;
     }
 }
