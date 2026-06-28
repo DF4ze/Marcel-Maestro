@@ -1,6 +1,7 @@
 package fr.ses10doigts.mm.app.specialist.coding;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,9 +44,10 @@ public class ClaudeCodeAgent implements SpecialistAgentPort {
         String brief = missionBriefBuilder.build(task, context);
         log.debug("ClaudeCodeAgent brief — taskId={}, brief={}", task.getId(), brief);
 
+        List<String> args = buildArgs(context, brief);
         ProcessResult result = runner.run(
                 binary,
-                List.of("--output-format", "text", "--print", brief),
+                args,
                 Path.of(context.getWorkingDirectory()),
                 properties.getClaude().getTimeoutMinutes() * 60);
 
@@ -54,5 +56,34 @@ public class ClaudeCodeAgent implements SpecialistAgentPort {
         log.info("ClaudeCodeAgent terminé — taskId={}, status={}, exitCode={}",
                 task.getId(), report.getStatus(), result.getExitCode());
         return report;
+    }
+
+    /**
+     * Construit les arguments CLI Claude : mode de permission (pré-autorisation non-interactive)
+     * et accès aux workspaces déclarés autres que le répertoire courant ({@code --add-dir}).
+     *
+     * @param context contexte de mission (workspaces déclarés, répertoire courant)
+     * @param brief prompt complet de la mission
+     * @return liste ordonnée des arguments passés au binaire Claude
+     */
+    private List<String> buildArgs(MarcelContext context, String brief) {
+        List<String> args = new ArrayList<>();
+        args.add("--output-format");
+        args.add("text");
+
+        String permissionMode = properties.getClaude().getPermissionMode();
+        if (permissionMode != null && !permissionMode.isBlank()) {
+            args.add("--permission-mode");
+            args.add(permissionMode.trim());
+        }
+
+        for (String dir : CliWorkspaceArgs.additionalWorkspaces(context)) {
+            args.add("--add-dir");
+            args.add(dir);
+        }
+
+        args.add("--print");
+        args.add(brief);
+        return args;
     }
 }

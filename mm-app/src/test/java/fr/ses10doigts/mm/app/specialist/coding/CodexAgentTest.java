@@ -38,7 +38,9 @@ class CodexAgentTest {
 
         when(runner.resolveBinary("codex")).thenReturn(Optional.of(Path.of("C:/bin/codex.cmd")));
         when(missionBriefBuilder.build(task, context)).thenReturn("brief");
-        when(runner.run(Path.of("C:/bin/codex.cmd"), List.of("exec", "--skip-git-repo-check", "-"),
+        when(runner.run(Path.of("C:/bin/codex.cmd"),
+                List.of("exec", "--skip-git-repo-check", "--sandbox", "workspace-write",
+                        "--ask-for-approval", "never", "-"),
                 Path.of("D:/work/project"), 1800, "brief"))
                 .thenReturn(ProcessResult.builder().output("raw-output").exitCode(0).build());
         when(reportExtractor.extract("raw-output", 0)).thenReturn(expected);
@@ -47,7 +49,8 @@ class CodexAgentTest {
 
         assertThat(report).isSameAs(expected);
         verify(runner).run(eq(Path.of("C:/bin/codex.cmd")),
-                eq(List.of("exec", "--skip-git-repo-check", "-")),
+                eq(List.of("exec", "--skip-git-repo-check", "--sandbox", "workspace-write",
+                        "--ask-for-approval", "never", "-")),
                 eq(Path.of("D:/work/project")),
                 eq(1800),
                 eq("brief"));

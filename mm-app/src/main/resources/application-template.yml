@@ -77,13 +77,22 @@ mm:
     queue-capacity: 50
 
   # Agents spécialistes CLI externes
+  # Pré-autorisation non-interactive : sans ces flags, les CLI se bloquent sur leur
+  # propre demande d'approbation (aucun humain pour répondre en mode headless).
   agents:
     claude:
       binary: claude
       timeout-minutes: 30
+      # --permission-mode : default | acceptEdits | plan | auto | dontAsk | bypassPermissions
+      # acceptEdits = édite sans prompt ; bypassPermissions = autorise aussi le shell (full auto).
+      permission-mode: acceptEdits
     codex:
       binary: codex
       timeout-minutes: 30
+      # --sandbox : read-only | workspace-write | danger-full-access
+      sandbox: workspace-write
+      # --ask-for-approval : untrusted | on-request | never (never = indispensable en non-interactif)
+      approval-policy: never
     routing:
       CODING: claude
       ANALYSIS: claude

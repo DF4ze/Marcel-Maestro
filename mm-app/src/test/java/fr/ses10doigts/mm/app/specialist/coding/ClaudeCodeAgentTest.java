@@ -38,7 +38,8 @@ class ClaudeCodeAgentTest {
 
         when(runner.resolveBinary("claude")).thenReturn(Optional.of(Path.of("C:/bin/claude.cmd")));
         when(missionBriefBuilder.build(task, context)).thenReturn("brief");
-        when(runner.run(Path.of("C:/bin/claude.cmd"), List.of("--output-format", "text", "--print", "brief"),
+        when(runner.run(Path.of("C:/bin/claude.cmd"),
+                List.of("--output-format", "text", "--permission-mode", "acceptEdits", "--print", "brief"),
                 Path.of("D:/work/project"), 1800))
                 .thenReturn(ProcessResult.builder().output("raw-output").exitCode(0).build());
         when(reportExtractor.extract("raw-output", 0)).thenReturn(expected);
@@ -47,7 +48,7 @@ class ClaudeCodeAgentTest {
 
         assertThat(report).isSameAs(expected);
         verify(runner).run(eq(Path.of("C:/bin/claude.cmd")),
-                eq(List.of("--output-format", "text", "--print", "brief")),
+                eq(List.of("--output-format", "text", "--permission-mode", "acceptEdits", "--print", "brief")),
                 eq(Path.of("D:/work/project")),
                 eq(1800));
     }

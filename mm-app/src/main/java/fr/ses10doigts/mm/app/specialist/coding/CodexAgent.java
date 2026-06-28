@@ -1,7 +1,9 @@
 package fr.ses10doigts.mm.app.specialist.coding;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -43,9 +45,10 @@ public class CodexAgent implements SpecialistAgentPort {
         String brief = missionBriefBuilder.build(task, context);
         log.debug("CodexAgent brief — taskId={}, brief={}", task.getId(), brief);
 
+        List<String> args = buildArgs(context);
         ProcessResult result = runner.run(
                 binary,
-                List.of("exec", "--skip-git-repo-check", "-"),
+                args,
                 Path.of(context.getWorkingDirectory()),
                 properties.getCodex().getTimeoutMinutes() * 60,
                 brief);
@@ -55,5 +58,55 @@ public class CodexAgent implements SpecialistAgentPort {
         log.info("CodexAgent terminé — taskId={}, status={}, exitCode={}",
                 task.getId(), report.getStatus(), result.getExitCode());
         return report;
+    }
+
+    /**
+     * Construit les arguments CLI Codex : sandbox + politique d'approbation (pré-autorisation
+     * non-interactive) et extension des racines accessibles en écriture aux workspaces déclarés
+     * autres que le répertoire courant ({@code sandbox_workspace_write.writable_roots}).
+     *
+     * <p>Le prompt est passé sur stdin ({@code -}), qui doit rester le dernier argument positionnel.</p>
+     *
+     * @param context contexte de mission (workspaces déclarés, répertoire courant)
+     * @return liste ordonnée des arguments passés au binaire Codex
+     */
+    private List<String> buildArgs(MarcelContext context) {
+        List<String> args = new ArrayList<>();
+        args.add("exec");
+        args.add("--skip-git-repo-check");
+
+        String sandbox = properties.getCodex().getSandbox();
+        if (sandbox != null && !sandbox.isBlank()) {
+            args.add("--sandbox");
+            args.add(sandbox.trim());
+        }
+
+        String approvalPolicy = properties.getCodex().getApprovalPolicy();
+        if (approvalPolicy != null && !approvalPolicy.isBlank()) {
+            args.add("--ask-for-approval");
+            args.add(approvalPolicy.trim());
+        }
+
+        List<String> extraRoots = CliWorkspaceArgs.additionalWorkspaces(context);
+        if (!extraRoots.isEmpty()) {
+            args.add("-c");
+            args.add("sandbox_workspace_write.writable_roots=" + toTomlArray(extraRoots));
+        }
+
+        args.add("-");
+        return args;
+    }
+
+    /**
+     * Sérialise une liste de chemins en tableau TOML pour {@code -c key=value}, en échappant
+     * les antislashs (chemins Windows) et les guillemets.
+     *
+     * @param paths chemins absolus à inclure
+     * @return littéral tableau TOML, ex. {@code ["C:\\repos\\api","C:\\repos\\front"]}
+     */
+    private String toTomlArray(List<String> paths) {
+        return paths.stream()
+                .map(path -> "\"" + path.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+                .collect(Collectors.joining(",", "[", "]"));
     }
 }
