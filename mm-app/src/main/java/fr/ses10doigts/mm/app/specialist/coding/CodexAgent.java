@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 /**
  * Adaptateur Marcel vers le CLI Codex.
  */
-@Component
+@Component("codex")
 @RequiredArgsConstructor
 @Slf4j
 public class CodexAgent implements SpecialistAgentPort {

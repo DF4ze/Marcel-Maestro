@@ -1,69 +1,88 @@
-# Plan de test manuel — CodingAgentAdapter (Étape 5)
+# Plan de test manuel — CodingAgentAdapter (étapes 2+3+5)
 
 ## Objet
 
-Valider manuellement les adaptateurs CLI `ClaudeCodeAgent` et `CodexAgent`, ainsi que les
-composants associés :
+Valider manuellement le sous-système `CodingAgentAdapter` sur deux axes complémentaires :
 
-- construction du mission brief ;
-- résolution cross-platform des binaires ;
-- exécution du subprocess dans le bon répertoire ;
-- extraction du bloc `<MARCEL_REPORT>...</MARCEL_REPORT>` ;
-- mapping de sortie vers `AgentReport`.
+1. la validation directe des adaptateurs CLI `ClaudeCodeAgent` et `CodexAgent` ;
+2. la validation du flux REST asynchrone `TaskDispatcher` + `TaskRouter`.
 
-## Limite importante
+L'objectif n'est pas seulement de vérifier qu'une requête répond en HTTP, mais de prouver que :
 
-Cette implémentation n'est pas encore branchée dans un flux métier Marcel existant.
-Il n'y a donc pas de scénario fonctionnel standard via `/projects/...` ou `/api/tasks`.
+- le binaire CLI est bien résolu ;
+- le mission brief est injecté avec le bon contexte ;
+- le bon agent est choisi selon la catégorie ;
+- le sous-processus démarre dans le bon répertoire ;
+- le rapport `<MARCEL_REPORT>...</MARCEL_REPORT>` est extrait correctement ;
+- le stop asynchrone est propre et déterministe.
 
-Pour rendre le test manuel réaliste avec Postman, un endpoint local de validation a été
-ajouté sous profil Spring dédié :
+## Endpoints à tester
+
+### 1. Endpoints de validation manuelle des agents CLI
+
+Actifs uniquement avec le profil Spring `manual-coding-agent-test` :
 
 - `GET /internal/manual/coding-agents/preflight`
 - `POST /internal/manual/coding-agents/{agentId}/execute`
 
-Ce contrôleur n'est actif **que** si l'application démarre avec :
+Ces endpoints servent à tester immédiatement Claude et Codex et à récupérer directement un `AgentReport`.
+
+### 2. Endpoints du flux asynchrone CodingAgentAdapter
+
+Actifs dans l'application normale :
+
+- `POST /api/coding-agent-tasks`
+- `DELETE /api/coding-agent-tasks/{taskId}`
+
+Ces endpoints valident le comportement de soumission asynchrone et de STOP, mais ne retournent pas encore de endpoint de consultation du rapport final. Pour l'instant, le résultat final se lit dans les logs applicatifs.
+
+## Pré-requis
+
+1. Avoir Postman.
+2. Importer la collection `docs/evolution-4-coding-agents/postman-coding-agent-adapter-step-5.json`.
+3. Avoir au moins un CLI installé :
+   - Windows : `claude.cmd` et/ou `codex.cmd`
+   - Linux : `claude` et/ou `codex`
+4. Vérifier que le binaire est accessible dans le `PATH`, ou configurer explicitement :
+   - `mm.agents.claude.binary`
+   - `mm.agents.codex.binary`
+5. Préparer un répertoire de travail réel :
+   - `D:/Documents/Spring/Marcel-Maestro`
+
+## Démarrage recommandé
+
+### Campagne A — test complet des agents CLI
+
+Lancer l'application avec le profil manuel :
 
 ```powershell
 $env:SPRING_PROFILES_ACTIVE="manual-coding-agent-test"
 mvn -pl mm-app spring-boot:run
 ```
 
-## Pré-requis
+### Campagne B — test du flux REST asynchrone
 
-1. Démarrer `mm-app` avec le profil `manual-coding-agent-test`.
-2. Importer la collection Postman `docs/evolution-4-coding-agents/postman-coding-agent-adapter-step-5.json`.
-3. Vérifier que le CLI à tester est installé sur la machine :
-   - Windows : `claude.cmd` et/ou `codex.cmd`
-   - Linux : `claude` et/ou `codex`
-4. Vérifier que le binaire ciblé est accessible dans le `PATH`, ou configurer explicitement :
-   - `mm.agents.claude.binary`
-   - `mm.agents.codex.binary`
-5. Préparer un répertoire de travail réel à donner dans la requête, par exemple :
-   - `D:/Documents/Spring/Marcel-Maestro`
+Lancer l'application normalement :
+
+```powershell
+mvn -pl mm-app spring-boot:run
+```
 
 ## Piège Postman sous Windows
 
-Dans le body JSON, **ne pas** injecter un chemin Windows avec antislashs bruts via une
-variable Postman, par exemple :
+Ne pas envoyer un chemin Windows avec antislashs bruts dans le JSON :
 
 ```json
 "workingDirectory": "D:\Documents\Spring\Marcel-Maestro"
 ```
 
-Ce JSON est invalide, car `\D` n'est pas un escape JSON reconnu. Le symptôme côté serveur est :
-
-`HTTP 400` avec un log Spring du type :
-
-`HttpMessageNotReadableException: JSON parse error: Unrecognized character escape 'D'`
-
-Utiliser à la place :
+Ce JSON est invalide. Utiliser à la place :
 
 ```json
 "workingDirectory": "D:/Documents/Spring/Marcel-Maestro"
 ```
 
-ou, si tu saisis le chemin en dur, une version doublement échappée :
+ou :
 
 ```json
 "workingDirectory": "D:\\Documents\\Spring\\Marcel-Maestro"
@@ -71,22 +90,23 @@ ou, si tu saisis le chemin en dur, une version doublement échappée :
 
 ## Ce qu'il faut comprendre avant de tester
 
-Le point de vérité du test n'est pas le texte libre du CLI mais le bloc final :
+Le point de vérité de l'exécution CLI n'est pas le texte libre du terminal, mais le bloc final :
 
 ```xml
 <MARCEL_REPORT>{"status":"DONE", ...}</MARCEL_REPORT>
 ```
 
-Sans ce bloc, Marcel classera la réponse en `TROUBLE`.
+Sans ce bloc, Marcel classera la sortie en `TROUBLE`.
 
 ## Ordre recommandé
 
-1. `1 - Preflight`
-2. `2 - Claude`
-3. `3 - Codex`
-4. `4 - Cas d'erreur`
+1. `1 - Manual Preflight`
+2. `2 - Manual Claude`
+3. `3 - Manual Codex`
+4. `4 - Async Dispatcher`
+5. `5 - Error Cases`
 
-## 1. Preflight
+## 1. Test de preflight manuel
 
 ### Requête
 
@@ -95,25 +115,25 @@ Sans ce bloc, Marcel classera la réponse en `TROUBLE`.
 ### Attendus
 
 1. `HTTP 200`
-2. Présence des deux objets `claude` et `codex`
-3. Pour chaque agent :
-   - `configuredBinary` correspond à la config active
-   - `timeoutMinutes = 30` sauf surcharge locale
-   - `resolved = true` si le binaire est trouvable
-   - `resolvedPath` contient le chemin absolu si résolu
+2. présence des objets `claude` et `codex`
+3. pour chaque agent :
+   - `configuredBinary` cohérent avec la config active ;
+   - `timeoutMinutes = 30` sauf surcharge locale ;
+   - `resolved = true` si le binaire est disponible ;
+   - `resolvedPath` renseigné si trouvé
 
 ### Interprétation
 
-- Si `resolved = false`, le test d'exécution échouera en `KO` avant même de lancer le CLI.
-- Si un seul binaire est installé, tester uniquement cet agent.
+- si `resolved = false`, l'exécution de cet agent échouera immédiatement en `KO`
+- si un seul binaire est installé, il suffit de tester cet agent-là
 
-## 2. Test nominal Claude
+## 2. Test nominal manuel Claude
 
 ### Requête
 
 `POST /internal/manual/coding-agents/claude/execute`
 
-Payload type :
+Payload :
 
 ```json
 {
@@ -132,15 +152,14 @@ Payload type :
 ### Attendus
 
 1. `HTTP 200`
-2. Réponse JSON `AgentReport`
-3. `status = DONE` si Claude respecte le contrat demandé
+2. réponse JSON de type `AgentReport`
+3. `status = DONE` si Claude respecte le contrat
 4. `summary` non vide
-5. `factsDiscovered` et `decisions` présents, au moins comme tableaux vides
+5. `factsDiscovered` et `decisions` présents, même si vides
 
-### Vérifications en logs
+### Logs à vérifier
 
-Chercher dans le log applicatif :
-
+- `ManualCodingAgentController execute`
 - `ClaudeCodeAgent démarré`
 - `ClaudeCodeAgent brief`
 - `ClaudeCodeAgent sortie brute`
@@ -148,21 +167,21 @@ Chercher dans le log applicatif :
 
 ### Si le résultat est `TROUBLE`
 
-Ca signifie généralement l'un des cas suivants :
+Les causes probables sont :
 
-1. Claude a répondu sans bloc `<MARCEL_REPORT>`
-2. le JSON du bloc est invalide
-3. le process a renvoyé un `exitCode != 0` avec un rapport `DONE`
+1. Claude n'a pas terminé par un bloc `<MARCEL_REPORT>`
+2. le JSON dans ce bloc est invalide
+3. le process a retourné un `exitCode != 0` malgré un rapport `DONE`
 
-Dans ce cas, regarder le `blocker` retourné par l'API : il contient la sortie brute tronquée.
+Dans ce cas, lire `blocker` dans la réponse : il contient la sortie brute tronquée.
 
-## 3. Test nominal Codex
+## 3. Test nominal manuel Codex
 
 ### Requête
 
 `POST /internal/manual/coding-agents/codex/execute`
 
-Même payload que pour Claude, en adaptant éventuellement le texte :
+Payload :
 
 ```json
 {
@@ -181,28 +200,118 @@ Même payload que pour Claude, en adaptant éventuellement le texte :
 ### Attendus
 
 1. `HTTP 200`
-2. Réponse JSON `AgentReport`
+2. réponse JSON de type `AgentReport`
 3. `status = DONE` si Codex respecte le contrat
 4. `summary` non vide
 
-### Vérifications en logs
+### Logs à vérifier
 
-Chercher :
-
+- `ManualCodingAgentController execute`
 - `CodexAgent démarré`
 - `CodexAgent brief`
 - `CodexAgent sortie brute`
 - `CodexAgent terminé`
 
-## 4. Cas d'erreur à valider
+## 4. Test du flux asynchrone Dispatcher + Router
+
+Ce bloc ne teste pas la restitution immédiate d'un `AgentReport`. Il teste :
+
+- la soumission HTTP ;
+- la génération d'un `taskId` ;
+- le routage par `category` ;
+- la prise en charge du STOP ;
+- les logs du `TaskDispatcher`.
+
+### 4.A Soumission `CODING`
+
+#### Requête
+
+`POST /api/coding-agent-tasks`
+
+Payload :
+
+```json
+{
+  "title": "Soumission async coding",
+  "description": "Analyse le contexte et termine par un MARCEL_REPORT JSON valide.",
+  "category": "CODING",
+  "projectMd": "# PROJECT\nFlux async",
+  "roadmapResultMd": "# ROADMAP RESULT\nTest CODING",
+  "c3Facts": [
+    "Le routeur doit choisir Claude pour CODING"
+  ],
+  "workingDirectory": "D:/Documents/Spring/Marcel-Maestro"
+}
+```
+
+#### Attendus
+
+1. `HTTP 202`
+2. présence d'un `taskId`
+3. dans les logs :
+   - `POST /api/coding-agent-tasks`
+   - `TaskDispatcher submit`
+   - `ClaudeCodeAgent démarré`
+   - `TaskDispatcher terminé`
+
+### 4.B Soumission `BUILD`
+
+#### Requête
+
+Même endpoint, mais :
+
+```json
+{
+  "title": "Soumission async build",
+  "description": "Analyse le contexte et termine par un MARCEL_REPORT JSON valide.",
+  "category": "BUILD",
+  "projectMd": "# PROJECT\nFlux async",
+  "roadmapResultMd": "# ROADMAP RESULT\nTest BUILD",
+  "c3Facts": [
+    "Le routeur doit choisir Codex pour BUILD"
+  ],
+  "workingDirectory": "D:/Documents/Spring/Marcel-Maestro"
+}
+```
+
+#### Attendus
+
+1. `HTTP 202`
+2. présence d'un `taskId`
+3. dans les logs :
+   - `TaskDispatcher submit`
+   - `CodexAgent démarré`
+   - `TaskDispatcher terminé`
+
+### 4.C STOP d'une tâche asynchrone
+
+#### Déroulé
+
+1. lancer une soumission async
+2. copier le `taskId`
+3. appeler `DELETE /api/coding-agent-tasks/{taskId}` immédiatement
+
+#### Attendus
+
+1. `HTTP 204`
+2. logs :
+   - `TaskDispatcher stop`
+   - `DELETE /api/coding-agent-tasks/{taskId}`
+3. résultat attendu côté exécution :
+   - la tâche n'est plus considérée comme active
+   - un rapport `KO` est enregistré en mémoire avec un message de type `Tâche interrompue par STOP`
+
+### Limite actuelle importante
+
+Le flux `/api/coding-agent-tasks` ne fournit pas encore d'endpoint REST pour relire le rapport final. Le verdict détaillé se vérifie donc via les logs applicatifs et, pour l'instant, pas via Postman seul.
+
+## 5. Cas d'erreur à valider
 
 ### A. Binaire introuvable
 
-But : vérifier le comportement `KO`.
-
 #### Préparation
 
-Modifier localement `application.yml` pour pointer vers un faux binaire, par exemple :
+Modifier localement la config, par exemple :
 
 ```yaml
 mm:
@@ -225,11 +334,7 @@ Redémarrer l'application.
 
 ### B. Répertoire de travail invalide
 
-But : vérifier qu'un échec de lancement remonte en `TROUBLE`.
-
 #### Requête
-
-Envoyer un `workingDirectory` inexistant :
 
 ```json
 {
@@ -245,8 +350,8 @@ Envoyer un `workingDirectory` inexistant :
 #### Attendus
 
 1. `HTTP 200`
-2. `status = TROUBLE` ou `KO` selon le mode d'échec effectif du CLI
-3. `blocker` ou `summary` contient un indice sur l'échec de démarrage
+2. `status = TROUBLE` ou `KO` selon le mode d'échec effectif
+3. `blocker` ou `summary` contient un indice sur l'échec
 
 ### C. Agent inconnu
 
@@ -260,44 +365,68 @@ Envoyer un `workingDirectory` inexistant :
 2. `status = KO`
 3. `summary` contient `agentId inconnu`
 
+## Comment dérouler concrètement la campagne
+
+### Passage 1 — vérifier l'infrastructure
+
+1. démarrer l'application avec `manual-coding-agent-test`
+2. lancer `GET preflight`
+3. confirmer que l'agent que tu veux tester a `resolved = true`
+
+Si ce n'est pas le cas, inutile d'aller plus loin avant d'avoir corrigé le PATH ou la config binaire.
+
+### Passage 2 — vérifier le contrat de rapport
+
+1. lancer le test manuel Claude ou Codex
+2. vérifier `status`, `summary`, `factsDiscovered`, `decisions`
+3. si `TROUBLE`, lire `blocker`
+4. vérifier les logs `brief`, `sortie brute`, `terminé`
+
+Le point critique ici est la présence d'un vrai bloc `<MARCEL_REPORT>`.
+
+### Passage 3 — vérifier le routage métier
+
+1. redémarrer sans profil spécial si nécessaire
+2. envoyer une tâche async en `CODING`
+3. vérifier dans les logs que Claude est choisi
+4. envoyer une tâche async en `BUILD`
+5. vérifier dans les logs que Codex est choisi
+
+Le HTTP seul ne suffit pas ici. Le vrai verdict est dans le couple `category` demandé et agent réellement démarré.
+
+### Passage 4 — vérifier l'arrêt
+
+1. soumettre une tâche async
+2. appeler immédiatement le `DELETE`
+3. vérifier que la réponse est `204`
+4. confirmer dans les logs que le stop a bien été pris en compte
+
 ## Lecture des résultats
 
 ### Cas réussi
 
-- `status = DONE`
-- `summary` exploitable
-- logs démarrage / fin présents
 - `resolved = true` au preflight
+- au moins un agent renvoie un `AgentReport` structuré
+- le routage `CODING -> Claude` et `BUILD -> Codex` est visible dans les logs
+- le STOP retourne `204` et laisse une trace explicite
 
-### Cas non conforme mais explicable
+### Cas non conforme mais exploitable
 
 - `status = TROUBLE`
-- sortie brute visible dans `blocker`
-- utile pour ajuster plus tard le prompt ou les arguments CLI
+- la sortie brute est lisible dans `blocker`
+- le problème vient du format de sortie du CLI et non du runner lui-même
 
 ### Cas d'infrastructure
 
 - `status = KO`
-- binaire absent, agent inconnu, ou prérequis non satisfaits
+- binaire absent, agent inconnu, working directory invalide, ou exécution non démarrable
 
-## Ce qu'il ne faut pas conclure trop vite
+## Verdict attendu
 
-Un `TROUBLE` n'implique pas forcément que le runner cross-platform est cassé.
-Très souvent, cela signifie seulement que le CLI testé n'a pas respecté le format de
-rapport demandé.
+La feature est acceptable si :
 
-## Vérification complémentaire hors Postman
-
-Si tu veux un contrôle de non-régression local du code ajouté :
-
-1. compiler isolément le package `specialist.coding`
-2. lancer les tests unitaires associés quand le build global `mm-app` sera réparé
-
-## Verdict attendu en fin de campagne
-
-La feature est considérée acceptable si :
-
-1. `preflight` résout correctement les binaires présents ;
-2. au moins un agent (`claude` ou `codex`) retourne un `AgentReport` structuré ;
-3. les cas `KO` et `TROUBLE` sont propres, lisibles et déterministes ;
-4. les logs permettent de comprendre rapidement l'échec.
+1. `preflight` résout correctement les binaires présents
+2. au moins un agent retourne un `AgentReport` structuré
+3. les cas `KO` et `TROUBLE` sont propres et lisibles
+4. le flux async retourne bien `202` à la soumission et `204` au stop
+5. les logs permettent de confirmer le routage réel et la fin d'exécution

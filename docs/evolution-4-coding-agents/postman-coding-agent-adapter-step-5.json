@@ -1,17 +1,18 @@
 {
   "info": {
     "name": "Marcel Maestro - CodingAgentAdapter Step 5",
-    "_postman_id": "f28e5a02-4eb7-4709-9321-5818e3269d3c",
-    "description": "Validation manuelle des endpoints locaux de test ClaudeCodeAgent / CodexAgent.",
+    "_postman_id": "fb4be58e-19eb-43b2-b407-59fd16c3aa9f",
+    "description": "Validation manuelle des endpoints du CodingAgentAdapter : agents CLI manuels et flux async Dispatcher/Router.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8080" },
-    { "key": "workingDirectory", "value": "D:/Documents/Spring/Marcel-Maestro" }
+    { "key": "workingDirectory", "value": "D:/Documents/Spring/Marcel-Maestro" },
+    { "key": "asyncTaskId", "value": "" }
   ],
   "item": [
     {
-      "name": "1 - Preflight",
+      "name": "1 - Manual Preflight",
       "item": [
         {
           "name": "GET preflight",
@@ -19,15 +20,15 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('claude/codex presents', function () {",
+                  "pm.test('claude/codex present', function () {",
                   "  var body = pm.response.json();",
                   "  pm.expect(body).to.have.property('claude');",
                   "  pm.expect(body).to.have.property('codex');",
                   "});"
-                ],
-                "type": "text/javascript"
+                ]
               }
             }
           ],
@@ -39,7 +40,7 @@
       ]
     },
     {
-      "name": "2 - Claude",
+      "name": "2 - Manual Claude",
       "item": [
         {
           "name": "POST execute claude",
@@ -47,14 +48,14 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('status present', function () {",
+                  "pm.test('AgentReport status present', function () {",
                   "  var body = pm.response.json();",
                   "  pm.expect(body).to.have.property('status');",
                   "});"
-                ],
-                "type": "text/javascript"
+                ]
               }
             }
           ],
@@ -73,7 +74,7 @@
       ]
     },
     {
-      "name": "3 - Codex",
+      "name": "3 - Manual Codex",
       "item": [
         {
           "name": "POST execute codex",
@@ -81,14 +82,14 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('status present', function () {",
+                  "pm.test('AgentReport status present', function () {",
                   "  var body = pm.response.json();",
                   "  pm.expect(body).to.have.property('status');",
                   "});"
-                ],
-                "type": "text/javascript"
+                ]
               }
             }
           ],
@@ -107,7 +108,86 @@
       ]
     },
     {
-      "name": "4 - Cas d'erreur",
+      "name": "4 - Async Dispatcher",
+      "item": [
+        {
+          "name": "POST async coding task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 202', function () { pm.response.to.have.status(202); });",
+                  "var body = pm.response.json();",
+                  "pm.test('taskId present', function () { pm.expect(body.taskId).to.be.a('string').and.not.empty; });",
+                  "pm.collectionVariables.set('asyncTaskId', body.taskId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Soumission async coding\",\n  \"description\": \"Analyse le contexte et termine par un MARCEL_REPORT JSON valide.\",\n  \"category\": \"CODING\",\n  \"projectMd\": \"# PROJECT\\nFlux async\",\n  \"roadmapResultMd\": \"# ROADMAP RESULT\\nTest CODING\",\n  \"c3Facts\": [\n    \"Le routeur doit choisir Claude pour CODING\"\n  ],\n  \"workingDirectory\": \"{{workingDirectory}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/coding-agent-tasks"
+          }
+        },
+        {
+          "name": "POST async build task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 202', function () { pm.response.to.have.status(202); });",
+                  "var body = pm.response.json();",
+                  "pm.test('taskId present', function () { pm.expect(body.taskId).to.be.a('string').and.not.empty; });",
+                  "pm.collectionVariables.set('asyncTaskId', body.taskId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Soumission async build\",\n  \"description\": \"Analyse le contexte et termine par un MARCEL_REPORT JSON valide.\",\n  \"category\": \"BUILD\",\n  \"projectMd\": \"# PROJECT\\nFlux async\",\n  \"roadmapResultMd\": \"# ROADMAP RESULT\\nTest BUILD\",\n  \"c3Facts\": [\n    \"Le routeur doit choisir Codex pour BUILD\"\n  ],\n  \"workingDirectory\": \"{{workingDirectory}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/coding-agent-tasks"
+          }
+        },
+        {
+          "name": "DELETE async task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 204', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/coding-agent-tasks/{{asyncTaskId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Error Cases",
       "item": [
         {
           "name": "POST unknown agent",
@@ -115,14 +195,14 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "pm.test('status KO', function () {",
                   "  var body = pm.response.json();",
                   "  pm.expect(body.status).to.eql('KO');",
                   "});"
-                ],
-                "type": "text/javascript"
+                ]
               }
             }
           ],
@@ -144,14 +224,14 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
                   "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                   "pm.test('status present', function () {",
                   "  var body = pm.response.json();",
                   "  pm.expect(body).to.have.property('status');",
                   "});"
-                ],
-                "type": "text/javascript"
+                ]
               }
             }
           ],
@@ -162,7 +242,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Working dir invalide\",\n  \"description\": \"Retourne un MARCEL_REPORT JSON valide.\",\n  \"projectMd\": \"# PROJECT\\nTest\",\n  \"roadmapResultMd\": \"# ROADMAP RESULT\\nTest\",\n  \"c3Facts\": [],\n  \"workingDirectory\": \"D:\\\\dossier\\\\inexistant\\\\mm\"\n}"
+              "raw": "{\n  \"title\": \"Working dir invalide\",\n  \"description\": \"Retourne un MARCEL_REPORT JSON valide.\",\n  \"projectMd\": \"# PROJECT\\nTest\",\n  \"roadmapResultMd\": \"# ROADMAP RESULT\\nTest\",\n  \"c3Facts\": [],\n  \"workingDirectory\": \"D:/dossier/inexistant/mm\"\n}"
             },
             "url": "{{baseUrl}}/internal/manual/coding-agents/codex/execute"
           }

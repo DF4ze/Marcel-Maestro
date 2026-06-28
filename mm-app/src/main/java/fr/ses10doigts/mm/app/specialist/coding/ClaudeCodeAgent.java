@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 /**
  * Adaptateur Marcel vers le CLI Claude Code.
  */
-@Component
+@Component("claude")
 @RequiredArgsConstructor
 @Slf4j
 public class ClaudeCodeAgent implements SpecialistAgentPort {
