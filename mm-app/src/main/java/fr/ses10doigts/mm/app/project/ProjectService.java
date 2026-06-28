@@ -2,6 +2,7 @@ package fr.ses10doigts.mm.app.project;
 
 import fr.ses10doigts.mm.starter.conversation.ConversationEntity;
 import fr.ses10doigts.mm.starter.conversation.ConversationRepository;
+import fr.ses10doigts.mm.starter.conversation.ConversationStatus;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.mm.starter.project.ProjectRepository;
 import fr.ses10doigts.mm.starter.project.ProjectStatus;
@@ -41,6 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class ProjectService {
 
+    public static final String DEFAULT_MISC_PROJECT_NAME = "Autre";
+    public static final String DEFAULT_MISC_PROJECT_SLUG = "autre";
     private static final String PROJECT_FILE_NAME = "PROJECT.md";
     private static final String ROADMAP_FILE_NAME = "ROADMAP.md";
     private static final String PROJECT_FILE_TEMPLATE = """
@@ -94,6 +97,24 @@ public class ProjectService {
             - Prochaines questions
             """;
 
+    private static final String DEFAULT_MISC_PROJECT_TEMPLATE = """
+            # PROJECT
+
+            Ce projet systeme s'appelle "Autre".
+
+            Il sert de projet fourre-tout pour les demandes sans rapport entre elles :
+            - questions ponctuelles ;
+            - tests rapides ;
+            - demandes diverses qui ne meritent pas un projet dedie ;
+            - conversations heterogenes sans continuite fonctionnelle.
+
+            Regles d'usage :
+            - ne suppose pas qu'une question soit liee aux precedentes ;
+            - traite chaque demande comme potentiellement independante ;
+            - propose de creer ou basculer vers un vrai projet dedie si un sujet devient suivi, structure ou durable ;
+            - ce projet reste le projet par defaut de Marcel et ne doit pas etre archive ni supprime.
+            """;
+
     private final ProjectRepository projectRepository;
     private final ProjectWorkspaceRepository workspaceRepository;
     private final ConversationRepository conversationRepository;
@@ -124,7 +145,7 @@ public class ProjectService {
         log.debug("Chemin workspace calculé — path='{}'", workspacePath);
 
         createDirectory(workspacePath);
-        initializeProjectContextFiles(workspacePath);
+        initializeProjectContextFiles(workspacePath, slug);
 
         Instant now = Instant.now();
         ProjectEntity project = ProjectEntity.builder()
@@ -190,6 +211,36 @@ public class ProjectService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
+     * Garantit la presence du projet systeme par defaut "Autre".
+     *
+     * @return le projet systeme "Autre"
+     */
+    @Transactional
+    public ProjectEntity ensureDefaultMiscProjectExists() {
+        return projectRepository.findBySanitizedName(DEFAULT_MISC_PROJECT_SLUG)
+                .map(existing -> {
+                    Path workspacePath = Paths.get(existing.getWorkspacePath());
+                    createDirectory(workspacePath);
+                    initializeProjectContextFiles(workspacePath, existing.getSanitizedName());
+                    if (existing.getStatus() != ProjectStatus.ACTIVE) {
+                        existing.setStatus(ProjectStatus.ACTIVE);
+                        existing.setUpdatedAt(Instant.now().toString());
+                        log.info("Projet systeme '{}' reactive au demarrage - projectId={}",
+                                DEFAULT_MISC_PROJECT_NAME, existing.getId());
+                        return projectRepository.save(existing);
+                    }
+                    log.debug("Projet systeme '{}' deja present - projectId={}",
+                            DEFAULT_MISC_PROJECT_NAME, existing.getId());
+                    return existing;
+                })
+                .orElseGet(() -> {
+                    log.info("Creation automatique du projet systeme '{}' au demarrage",
+                            DEFAULT_MISC_PROJECT_NAME);
+                    return create(DEFAULT_MISC_PROJECT_NAME);
+                });
+    }
+
+    /**
      * Archive un projet (statut ACTIVE → ARCHIVED).
      * Un projet archivé reste consultable mais ne reçoit plus de nouvelles tâches.
      *
@@ -199,11 +250,32 @@ public class ProjectService {
      */
     @Transactional
     public ProjectEntity archive(String id) {
+        return archive(id, null);
+    }
+
+    /**
+     * Archive un projet et cascade l'archivage sur ses conversations ouvertes.
+     *
+     * @param id l'ID du projet
+     * @param reason raison fonctionnelle d'archivage, optionnelle
+     * @return l'entité mise à jour
+     * @throws ProjectNotFoundException si le projet n'existe pas
+     */
+    @Transactional
+    public ProjectEntity archive(String id, String reason) {
         ProjectEntity project = findOrThrow(id);
+        ensureProjectMutable(project, "archive");
+        List<ConversationEntity> openConversations =
+                conversationRepository.findAllByProjectIdAndStatus(id, ConversationStatus.OPEN);
+        openConversations.forEach(conversation -> {
+            conversation.setStatus(ConversationStatus.ARCHIVED);
+            conversationRepository.save(conversation);
+        });
         project.setStatus(ProjectStatus.ARCHIVED);
         project.setUpdatedAt(Instant.now().toString());
         ProjectEntity saved = projectRepository.save(project);
-        log.info("Projet archivé — id={}, name='{}'", saved.getId(), saved.getName());
+        log.info("Projet archivé — id={}, name='{}', openConversationsArchived={}, reason='{}'",
+                saved.getId(), saved.getName(), openConversations.size(), reason == null ? "" : reason);
         return saved;
     }
 
@@ -217,6 +289,7 @@ public class ProjectService {
     @Transactional
     public ProjectEntity unarchive(String id) {
         ProjectEntity project = findOrThrow(id);
+        ensureProjectMutable(project, "desarchive");
         project.setStatus(ProjectStatus.ACTIVE);
         project.setUpdatedAt(Instant.now().toString());
         ProjectEntity saved = projectRepository.save(project);
@@ -242,6 +315,7 @@ public class ProjectService {
     @Transactional
     public void delete(String id) {
         ProjectEntity project = findOrThrow(id);
+        ensureProjectMutable(project, "supprime");
         String workspacePath = project.getWorkspacePath();
         String name = project.getName();
         List<ConversationEntity> conversations = conversationRepository.findAllByProjectId(id);
@@ -284,6 +358,7 @@ public class ProjectService {
     @Transactional
     public ProjectEntity updateName(String id, String newName) {
         ProjectEntity project = findOrThrow(id);
+        ensureProjectMutable(project, "renomme");
         String oldName = project.getName();
         project.setName(newName);
         project.setUpdatedAt(Instant.now().toString());
@@ -384,6 +459,10 @@ public class ProjectService {
         return findOrThrow(id);
     }
 
+    public boolean isProtectedProject(ProjectEntity project) {
+        return project != null && DEFAULT_MISC_PROJECT_SLUG.equals(project.getSanitizedName());
+    }
+
     /**
      * Retourne les dossiers externes d'un projet.
      *
@@ -454,9 +533,17 @@ public class ProjectService {
         }
     }
 
-    private void initializeProjectContextFiles(Path workspacePath) {
-        writeFileIfAbsent(workspacePath.resolve(PROJECT_FILE_NAME), PROJECT_FILE_TEMPLATE);
+    private void initializeProjectContextFiles(Path workspacePath, String slug) {
+        writeProjectFile(workspacePath.resolve(PROJECT_FILE_NAME), slug);
         writeFileIfAbsent(workspacePath.resolve(ROADMAP_FILE_NAME), ROADMAP_FILE_TEMPLATE);
+    }
+
+    private void writeProjectFile(Path path, String slug) {
+        if (DEFAULT_MISC_PROJECT_SLUG.equals(slug)) {
+            writeFile(path, DEFAULT_MISC_PROJECT_TEMPLATE);
+            return;
+        }
+        writeFileIfAbsent(path, PROJECT_FILE_TEMPLATE);
     }
 
     private void writeFileIfAbsent(Path path, String content) {
@@ -469,6 +556,22 @@ public class ProjectService {
             }
         } catch (IOException e) {
             throw new UncheckedIOException("Impossible d'initialiser le fichier projet : " + path, e);
+        }
+    }
+
+    private void writeFile(Path path, String content) {
+        try {
+            Files.writeString(path, content);
+            log.info("Fichier projet ecrit — path='{}'", path);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Impossible d'ecrire le fichier projet : " + path, e);
+        }
+    }
+
+    private void ensureProjectMutable(ProjectEntity project, String action) {
+        if (isProtectedProject(project)) {
+            throw new ProtectedProjectMutationException(
+                    "Le projet systeme \"" + DEFAULT_MISC_PROJECT_NAME + "\" ne peut pas etre " + action + ".");
         }
     }
 

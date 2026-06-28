@@ -9,6 +9,7 @@ import fr.ses10doigts.mm.core.orchestration.Dispatcher;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
 import fr.ses10doigts.mm.core.tool.PathValidator;
 import fr.ses10doigts.mm.core.tool.WorkspaceRegistry;
+import fr.ses10doigts.mm.starter.conversation.ConversationTaskRepository;
 import fr.ses10doigts.mm.starter.hitl.AgentContextHolder;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.mm.starter.project.ProjectRepository;
@@ -136,7 +137,8 @@ class ChatAgentReadProjectFileTest {
                 dispatcherProvider,
                 projectRepository,
                 projectWorkspaceRepository,
-                new PathValidator(workspaceRoot, externalWorkspaceRegistry(externalWorkspace)));
+                new PathValidator(workspaceRoot, externalWorkspaceRegistry(externalWorkspace)),
+                mock(ConversationTaskRepository.class));
         ReflectionTestUtils.setField(chatAgent, "maxFileReadChars", maxChars);
         return chatAgent;
     }

@@ -8,20 +8,20 @@ import fr.ses10doigts.mm.core.tool.AgentTool;
 import fr.ses10doigts.mm.core.tool.RiskLevel;
 import fr.ses10doigts.mm.core.tool.ToolException;
 import fr.ses10doigts.mm.core.tool.ToolResult;
+import fr.ses10doigts.mm.starter.project.ProjectEntity;
+import fr.ses10doigts.mm.starter.project.ProjectRepository;
+import fr.ses10doigts.mm.starter.project.ProjectWorkspaceRepository;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/**
- * Outil de lecture de fichier dans le workspace.
- *
- * <p>Lit le contenu d'un fichier dont le chemin est relatif au workspace configuré.
- * La taille maximale de lecture est limitée à 100 Ko pour éviter la surcharge mémoire.</p>
- */
 @Slf4j
 @Component
 public class ReadFileTool implements AgentTool {
@@ -30,56 +30,45 @@ public class ReadFileTool implements AgentTool {
     private static final JsonNode SCHEMA = buildSchema();
 
     private final Path workspaceRoot;
+    private final ProjectRepository projectRepository;
+    private final ProjectWorkspaceRepository projectWorkspaceRepository;
 
-    /**
-     * Construit le tool avec le répertoire workspace configuré.
-     *
-     * @param workspaceRoot chemin racine du workspace (défaut {@code ./workspace})
-     */
-    public ReadFileTool(@Value("${mm.workspace.root:./workspace}") String workspaceRoot) {
+    public ReadFileTool(@Value("${mm.workspace.root:./workspace}") String workspaceRoot,
+                        ProjectRepository projectRepository,
+                        ProjectWorkspaceRepository projectWorkspaceRepository) {
         this.workspaceRoot = Path.of(workspaceRoot);
+        this.projectRepository = projectRepository;
+        this.projectWorkspaceRepository = projectWorkspaceRepository;
     }
 
-    /** {@inheritDoc} */
     @Override
     public String name() {
         return "read_file";
     }
 
-    /** {@inheritDoc} */
     @Override
     public String description() {
         return "Lit le contenu d'un fichier dans le workspace";
     }
 
-    /** {@inheritDoc} */
     @Override
     public JsonNode inputSchema() {
         return SCHEMA;
     }
 
-    /** {@inheritDoc} */
     @Override
     public RiskLevel riskLevel() {
         return RiskLevel.LOW;
     }
 
-    /**
-     * Lit le contenu du fichier spécifié par le paramètre {@code path}.
-     *
-     * @param params paramètres validés ({@code path} requis)
-     * @param ctx    contexte d'exécution courant
-     * @return résultat contenant le contenu du fichier
-     * @throws ToolException si le paramètre est absent ou la lecture échoue
-     */
     @Override
     public ToolResult execute(Map<String, Object> params, AgentContext ctx) throws ToolException {
         String path = (String) params.get("path");
         if (path == null || path.isBlank()) {
-            throw new ToolException("Paramètre 'path' requis et non vide");
+            throw new ToolException("Parametre 'path' requis et non vide");
         }
 
-        Path resolved = workspaceRoot.resolve(path).normalize();
+        Path resolved = resolvePath(path, ctx);
         log.info("read_file : lecture de '{}', tenant='{}'", resolved, ctx.tenant());
 
         if (!Files.exists(resolved)) {
@@ -89,20 +78,74 @@ public class ReadFileTool implements AgentTool {
 
         try {
             long size = Files.size(resolved);
-            log.debug("Taille du fichier : {} octets", size);
-
             if (size > MAX_SIZE_BYTES) {
                 log.info("Fichier trop volumineux : {} octets (max {} octets)", size, MAX_SIZE_BYTES);
                 return ToolResult.fail("Fichier trop volumineux : " + size + " octets (max 100 Ko)");
             }
 
             String content = Files.readString(resolved);
-            log.debug("Fichier lu avec succès : {} caractères", content.length());
             return ToolResult.ok(content);
         } catch (IOException e) {
             log.info("Erreur de lecture du fichier '{}' : {}", resolved, e.getMessage());
             throw new ToolException("Erreur de lecture : " + e.getMessage(), e);
         }
+    }
+
+    private Path resolvePath(String requestedPath, AgentContext ctx) throws ToolException {
+        String normalized = requestedPath.replace('\\', '/');
+        if (ctx.projectId() != null && isProjectContextFile(normalized)) {
+            Optional<ProjectEntity> project = projectRepository.findById(ctx.projectId());
+            if (project.isPresent()) {
+                try {
+                    Path projectWorkspace = Path.of(project.get().getWorkspacePath()).toAbsolutePath().normalize();
+                    Path redirected = projectWorkspace.resolve(fileNameOf(normalized)).normalize();
+                    log.info("read_file : redirection fichier contexte projet '{}' -> '{}'",
+                            requestedPath, redirected);
+                    return redirected;
+                } catch (InvalidPathException e) {
+                    throw new ToolException("Workspace projet invalide : " + e.getMessage(), e);
+                }
+            }
+        }
+
+        Path primary = workspaceRoot.resolve(requestedPath).normalize();
+        if (ctx.projectId() != null && !Files.exists(primary)) {
+            Path fallback = resolveInAttachedWorkspaces(ctx.projectId(), requestedPath);
+            if (fallback != null) {
+                log.info("read_file : fallback workspace rattache '{}' -> '{}'", requestedPath, fallback);
+                return fallback;
+            }
+        }
+        return primary;
+    }
+
+    private Path resolveInAttachedWorkspaces(String projectId, String requestedPath) throws ToolException {
+        try {
+            List<Path> candidates = projectWorkspaceRepository.findAllByProjectId(projectId).stream()
+                    .map(ws -> Path.of(ws.getPath()).toAbsolutePath().normalize().resolve(requestedPath).normalize())
+                    .toList();
+            for (Path candidate : candidates) {
+                if (Files.exists(candidate) && Files.isRegularFile(candidate)) {
+                    return candidate;
+                }
+            }
+            return null;
+        } catch (InvalidPathException e) {
+            throw new ToolException("Workspace rattache invalide : " + e.getMessage(), e);
+        }
+    }
+
+    private static boolean isProjectContextFile(String path) {
+        String lowered = path.toLowerCase();
+        return lowered.equals("project.md")
+                || lowered.equals("roadmap.md")
+                || lowered.equals("workspace/project.md")
+                || lowered.equals("workspace/roadmap.md");
+    }
+
+    private static String fileNameOf(String path) {
+        int idx = path.lastIndexOf('/');
+        return idx >= 0 ? path.substring(idx + 1) : path;
     }
 
     private static JsonNode buildSchema() {
@@ -111,13 +154,11 @@ public class ReadFileTool implements AgentTool {
         schema.put("type", "object");
 
         ObjectNode properties = schema.putObject("properties");
-
         ObjectNode path = properties.putObject("path");
         path.put("type", "string");
         path.put("description", "Chemin relatif du fichier dans le workspace");
 
         schema.putArray("required").add("path");
-
         return schema;
     }
 }

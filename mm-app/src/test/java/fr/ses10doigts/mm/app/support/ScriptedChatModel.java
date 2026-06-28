@@ -38,7 +38,7 @@ public final class ScriptedChatModel implements ChatModel {
     /**
      * Empile une réponse texte avec un finishReason explicite.
      *
-     * @param text         texte à renvoyer
+     * @param text texte à renvoyer
      * @param finishReason raison de terminaison simulée
      * @return le modèle courant
      */
@@ -89,6 +89,30 @@ public final class ScriptedChatModel implements ChatModel {
 
     @Override
     public ChatResponse call(Prompt prompt) {
+        Step step = nextStep(prompt);
+        if (step.error() != null) {
+            throw step.error();
+        }
+        return toResponse(step.text() == null ? "" : step.text(), step.finishReason());
+    }
+
+    @Override
+    public Flux<ChatResponse> stream(Prompt prompt) {
+        Step step = nextStep(prompt);
+        if (step.error() != null) {
+            return Flux.error(step.error());
+        }
+
+        String text = step.text() == null ? "" : step.text();
+        if (text.isEmpty()) {
+            return Flux.just(toResponse("", step.finishReason()));
+        }
+
+        return Flux.range(0, text.length())
+                .map(index -> toResponse(String.valueOf(text.charAt(index)), step.finishReason()));
+    }
+
+    private Step nextStep(Prompt prompt) {
         callCount++;
         prompts.add(prompt);
         onCall.run();
@@ -97,18 +121,14 @@ public final class ScriptedChatModel implements ChatModel {
             step = new Step("", "stop", null);
         }
         last = step;
-        if (step.error() != null) {
-            throw step.error();
-        }
-        AssistantMessage message = new AssistantMessage(step.text() == null ? "" : step.text());
-        ChatGenerationMetadata metadata = ChatGenerationMetadata.builder()
-                .finishReason(step.finishReason())
-                .build();
-        return new ChatResponse(List.of(new Generation(message, metadata)));
+        return step;
     }
 
-    @Override
-    public Flux<ChatResponse> stream(Prompt prompt) {
-        throw new UnsupportedOperationException("streaming non utilisé dans ces tests");
+    private ChatResponse toResponse(String text, String finishReason) {
+        AssistantMessage message = new AssistantMessage(text);
+        ChatGenerationMetadata metadata = ChatGenerationMetadata.builder()
+                .finishReason(finishReason)
+                .build();
+        return new ChatResponse(List.of(new Generation(message, metadata)));
     }
 }

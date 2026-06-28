@@ -2,6 +2,7 @@ package fr.ses10doigts.mm.app.rest;
 
 import fr.ses10doigts.mm.app.project.ProjectNameConflictException;
 import fr.ses10doigts.mm.app.project.ProjectNotFoundException;
+import fr.ses10doigts.mm.app.project.ProtectedProjectMutationException;
 import fr.ses10doigts.mm.app.project.ProjectService;
 import fr.ses10doigts.mm.app.rest.dto.AddWorkspaceRequest;
 import fr.ses10doigts.mm.app.rest.dto.CreateProjectRequest;
@@ -249,6 +250,12 @@ public class ProjectController {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleBadArg(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(ex.getMessage()));
+    }
+
+    @ExceptionHandler(ProtectedProjectMutationException.class)
+    public ResponseEntity<Map<String, String>> handleProtectedProject(ProtectedProjectMutationException ex) {
+        log.info("Mutation interdite sur projet protege — {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(errorBody(ex.getMessage()));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

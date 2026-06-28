@@ -1,0 +1,545 @@
+{
+  "info": {
+    "name": "Marcel Maestro - E3-M5 Validation",
+    "description": "Collection Postman de validation manuelle pour E3-M5 : liste enrichie des conversations, renommage manuel, archivage, filtres REST et non-regression lecture seule des conversations archivees. Importer la collection, demarrer l'application sur {{baseUrl}}, puis executer les dossiers dans l'ordre.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "projectName", "value": "E3M5 Validation", "type": "string" },
+    { "key": "projectId", "value": "", "type": "string" },
+    { "key": "conversationIdA", "value": "", "type": "string" },
+    { "key": "conversationIdB", "value": "", "type": "string" },
+    { "key": "renamedTitleA", "value": "Renommee via Postman", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1 - Setup",
+      "description": "Creation du projet et de deux conversations de test, puis alimentation minimale de leur activite.",
+      "item": [
+        {
+          "name": "Creer projet de test",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('projectId', body.id);",
+                  "pm.test('projectId memorise', function () { pm.expect(pm.collectionVariables.get('projectId')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{projectName}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            }
+          }
+        },
+        {
+          "name": "Creer conversation A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('conversationIdA', body.id);",
+                  "pm.test('conversationIdA memorise', function () { pm.expect(pm.collectionVariables.get('conversationIdA')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "Creer conversation B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('conversationIdB', body.id);",
+                  "pm.test('conversationIdB memorise', function () { pm.expect(pm.collectionVariables.get('conversationIdB')).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "Poster message dans conversation A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Premier message conv A\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdA}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdA}}", "messages"]
+            }
+          }
+        },
+        {
+          "name": "Poster message dans conversation B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('role ASSISTANT', function () { pm.expect(body.role).to.equal('ASSISTANT'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Premier message conv B\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdB}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdB}}", "messages"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Liste enrichie",
+      "description": "Validation de messageCount, lastMessageAt et des filtres OPEN / ARCHIVED / ALL.",
+      "item": [
+        {
+          "name": "GET conversations - liste OPEN enrichie",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('liste non vide', function () { pm.expect(body.length).to.be.greaterThan(0); });",
+                  "pm.test('messageCount present', function () { pm.expect(body[0]).to.have.property('messageCount'); });",
+                  "pm.test('lastMessageAt present', function () { pm.expect(body[0]).to.have.property('lastMessageAt'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "GET conversations - filtre OPEN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('toutes OPEN', function () { pm.expect(body.every(c => c.status === 'OPEN')).to.equal(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations?status=OPEN",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"],
+              "query": [{ "key": "status", "value": "OPEN" }]
+            }
+          }
+        },
+        {
+          "name": "GET conversations - filtre ALL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('au moins 2 conversations', function () { pm.expect(body.length).to.be.greaterThan(1); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations?status=ALL",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"],
+              "query": [{ "key": "status", "value": "ALL" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Renommage",
+      "item": [
+        {
+          "name": "PATCH conversation A - renommer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('title mis a jour', function () { pm.expect(body.title).to.equal(pm.collectionVariables.get('renamedTitleA')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"{{renamedTitleA}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdA}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdA}}"]
+            }
+          }
+        },
+        {
+          "name": "PATCH conversation A - titre vide",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdA}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdA}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Archivage",
+      "item": [
+        {
+          "name": "POST archive conversation B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('status ARCHIVED', function () { pm.expect(body.status).to.equal('ARCHIVED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdB}}/archive",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdB}}", "archive"]
+            }
+          }
+        },
+        {
+          "name": "POST archive conversation B - deja archivee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdB}}/archive",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdB}}", "archive"]
+            }
+          }
+        },
+        {
+          "name": "POST message conversation B archivee - refuse",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Message interdit sur conversation archivee\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdB}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdB}}", "messages"]
+            }
+          }
+        },
+        {
+          "name": "GET conversations - filtre OPEN apres archivage",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "const archivedId = pm.collectionVariables.get('conversationIdB');",
+                  "pm.test('conversation archivee absente', function () { pm.expect(body.some(c => c.id === archivedId)).to.equal(false); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations?status=OPEN",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"],
+              "query": [{ "key": "status", "value": "OPEN" }]
+            }
+          }
+        },
+        {
+          "name": "GET conversations - filtre ARCHIVED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "const archivedId = pm.collectionVariables.get('conversationIdB');",
+                  "pm.test('conversation archivee presente', function () { pm.expect(body.some(c => c.id === archivedId && c.status === 'ARCHIVED')).to.equal(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations?status=ARCHIVED",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"],
+              "query": [{ "key": "status", "value": "ARCHIVED" }]
+            }
+          }
+        },
+        {
+          "name": "GET conversations - filtre ALL apres archivage",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "const conversationIdA = pm.collectionVariables.get('conversationIdA');",
+                  "const conversationIdB = pm.collectionVariables.get('conversationIdB');",
+                  "pm.test('A et B presentes', function () { pm.expect(body.some(c => c.id === conversationIdA)).to.equal(true); pm.expect(body.some(c => c.id === conversationIdB)).to.equal(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations?status=ALL",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"],
+              "query": [{ "key": "status", "value": "ALL" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Verifications manuelles",
+      "description": "Check-list hors automatisation Postman pour SQL, logs, fichiers et Telegram.",
+      "item": [
+        {
+          "name": "Etape manuelle SQL - activite conversation",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations?status=ALL",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"],
+              "query": [{ "key": "status", "value": "ALL" }]
+            },
+            "description": "Action manuelle hors Postman. Ouvrir la DB SQLite puis executer :\n\nSELECT id, project_id, title, status, message_count, last_message_at\nFROM conversation\nWHERE project_id = '{{projectId}}'\nORDER BY started_at DESC;\n\nAttendus :\n- conversation A : titre mis a jour, status OPEN, message_count >= 2, last_message_at non null\n- conversation B : status ARCHIVED, message_count >= 2, last_message_at non null"
+          }
+        },
+        {
+          "name": "Etape manuelle SQL - memoire Spring AI",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdA}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdA}}", "messages"]
+            },
+            "description": "Action manuelle hors Postman. Executer en base :\n\nSELECT conversation_id, type, content, timestamp\nFROM SPRING_AI_CHAT_MEMORY\nWHERE conversation_id IN ('{{conversationIdA}}', '{{conversationIdB}}')\nORDER BY conversation_id, timestamp;\n\nAttendus :\n- presence de messages USER et ASSISTANT pour A et B\n- aucune suppression memoire lors de l'archivage de B"
+          }
+        },
+        {
+          "name": "Etape manuelle logs - transitions conversation",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations/{{conversationIdB}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations", "{{conversationIdB}}"]
+            },
+            "description": "Verifier dans les logs applicatifs :\n- Conversation creee\n- Activite conversation mise a jour\n- Conversation renommee\n- Conversation archivee\n- POST /projects/{id}/conversations/{id}/archive - ok"
+          }
+        },
+        {
+          "name": "Etape manuelle Telegram - commandes et garde-fous",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/conversations?status=ALL",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "conversations"],
+              "query": [{ "key": "status", "value": "ALL" }]
+            },
+            "description": "1. Dans Telegram, faire /switch {{projectName}}\n2. Faire /conversations puis verifier en logs qu'aucune tache ni HITL n'a ete declenche\n3. Verifier que la liste propose des conversations ouvertes numerotees\n4. Faire /conv 1 puis verifier en logs qu'aucune tache ni HITL n'a ete declenche\n5. Envoyer un message libre et verifier via SQL que le message part dans la conversation reprise\n6. Faire /new puis verifier en logs qu'aucune tache ni HITL n'a ete declenche\n7. Envoyer un message libre et verifier qu'une nouvelle conversation OPEN apparait en base\n8. Archiver via Postman la conversation active Telegram puis renvoyer un message libre\n9. Attendu : refus de la conversation archivee, aucune tache, aucune ecriture memoire, message de guidance vers /new ou /conversations\n10. Faire /reset puis verifier que la conversation active et les suggestions sont videes, sans tache ni HITL"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 - Nettoyage",
+      "item": [
+        {
+          "name": "DELETE projet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            },
+            "description": "Le cleanup REST disponible dans le checkout courant passe par la suppression du projet, qui entraine la suppression cascade des conversations en base."
+          }
+        }
+      ]
+    }
+  ]
+}

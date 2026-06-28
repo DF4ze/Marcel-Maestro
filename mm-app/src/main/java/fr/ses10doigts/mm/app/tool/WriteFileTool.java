@@ -8,22 +8,20 @@ import fr.ses10doigts.mm.core.tool.AgentTool;
 import fr.ses10doigts.mm.core.tool.RiskLevel;
 import fr.ses10doigts.mm.core.tool.ToolException;
 import fr.ses10doigts.mm.core.tool.ToolResult;
+import fr.ses10doigts.mm.starter.project.ProjectEntity;
+import fr.ses10doigts.mm.starter.project.ProjectRepository;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Outil d'écriture de fichier dans le workspace.
- *
- * <p>Écrit du contenu dans un fichier dont le chemin est relatif au workspace configuré.
- * Les répertoires parents sont créés automatiquement si nécessaire.</p>
- *
- * <p>{@code riskLevel = HIGH} : l'écriture de fichier est une opération potentiellement
- * destructive qui nécessite un consentement HITL.</p>
+ * Outil d'ecriture de fichier dans le workspace.
  */
 @Slf4j
 @Component
@@ -32,77 +30,95 @@ public class WriteFileTool implements AgentTool {
     private static final JsonNode SCHEMA = buildSchema();
 
     private final Path workspaceRoot;
+    private final ProjectRepository projectRepository;
 
-    /**
-     * Construit le tool avec le répertoire workspace configuré.
-     *
-     * @param workspaceRoot chemin racine du workspace (défaut {@code ./workspace})
-     */
-    public WriteFileTool(@Value("${mm.workspace.root:./workspace}") String workspaceRoot) {
+    public WriteFileTool(@Value("${mm.workspace.root:./workspace}") String workspaceRoot,
+                         ProjectRepository projectRepository) {
         this.workspaceRoot = Path.of(workspaceRoot);
+        this.projectRepository = projectRepository;
     }
 
-    /** {@inheritDoc} */
     @Override
     public String name() {
         return "write_file";
     }
 
-    /** {@inheritDoc} */
     @Override
     public String description() {
-        return "Écrire du contenu dans un fichier";
+        return "Ecrire du contenu dans un fichier";
     }
 
-    /** {@inheritDoc} */
     @Override
     public JsonNode inputSchema() {
         return SCHEMA;
     }
 
-    /** {@inheritDoc} */
     @Override
     public RiskLevel riskLevel() {
         return RiskLevel.HIGH;
     }
 
-    /**
-     * Écrit le contenu dans le fichier spécifié.
-     *
-     * @param params paramètres validés ({@code path} et {@code content} requis)
-     * @param ctx    contexte d'exécution courant
-     * @return résultat de succès avec le chemin écrit
-     * @throws ToolException si les paramètres sont absents ou l'écriture échoue
-     */
     @Override
     public ToolResult execute(Map<String, Object> params, AgentContext ctx) throws ToolException {
         String path = (String) params.get("path");
         String content = (String) params.get("content");
 
         if (path == null || path.isBlank()) {
-            throw new ToolException("Paramètre 'path' requis et non vide");
+            throw new ToolException("Parametre 'path' requis et non vide");
         }
         if (content == null) {
-            throw new ToolException("Paramètre 'content' requis");
+            throw new ToolException("Parametre 'content' requis");
         }
 
-        Path resolved = workspaceRoot.resolve(path).normalize();
-        log.info("write_file : écriture dans '{}', tenant='{}'", resolved, ctx.tenant());
+        Path resolved = resolvePath(path, ctx);
+        log.info("write_file : ecriture dans '{}', tenant='{}'", resolved, ctx.tenant());
 
         try {
             Path parent = resolved.getParent();
             if (parent != null && !Files.exists(parent)) {
                 Files.createDirectories(parent);
-                log.debug("Répertoires parents créés : {}", parent);
+                log.debug("Repertoires parents crees : {}", parent);
             }
 
             Files.writeString(resolved, content);
-            log.info("Fichier écrit avec succès : {} ({} caractères)", resolved, content.length());
-            return ToolResult.ok("Fichier écrit : " + path);
+            log.info("Fichier ecrit avec succes : {} ({} caracteres)", resolved, content.length());
+            return ToolResult.ok("Fichier ecrit : " + path);
         } catch (IOException e) {
-            log.info("Erreur d'écriture du fichier '{}' : {}", resolved, e.getMessage());
-            throw new ToolException("Erreur d'écriture : " + e.getMessage(), e);
+            log.info("Erreur d'ecriture du fichier '{}' : {}", resolved, e.getMessage());
+            throw new ToolException("Erreur d'ecriture : " + e.getMessage(), e);
         }
+    }
+
+    private Path resolvePath(String requestedPath, AgentContext ctx) throws ToolException {
+        String normalized = requestedPath.replace('\\', '/');
+        if (ctx.projectId() != null && isProjectContextFile(normalized)) {
+            Optional<ProjectEntity> project = projectRepository.findById(ctx.projectId());
+            if (project.isPresent()) {
+                try {
+                    Path projectWorkspace = Path.of(project.get().getWorkspacePath()).toAbsolutePath().normalize();
+                    Path redirected = projectWorkspace.resolve(fileNameOf(normalized)).normalize();
+                    log.info("write_file : redirection fichier contexte projet '{}' -> '{}'",
+                            requestedPath, redirected);
+                    return redirected;
+                } catch (InvalidPathException e) {
+                    throw new ToolException("Workspace projet invalide : " + e.getMessage(), e);
+                }
+            }
+        }
+        return workspaceRoot.resolve(requestedPath).normalize();
+    }
+
+    private static boolean isProjectContextFile(String path) {
+        String lowered = path.toLowerCase();
+        return lowered.equals("project.md")
+                || lowered.equals("roadmap.md")
+                || lowered.equals("workspace/project.md")
+                || lowered.equals("workspace/roadmap.md");
+    }
+
+    private static String fileNameOf(String path) {
+        int idx = path.lastIndexOf('/');
+        return idx >= 0 ? path.substring(idx + 1) : path;
     }
 
     private static JsonNode buildSchema() {
@@ -118,10 +134,9 @@ public class WriteFileTool implements AgentTool {
 
         ObjectNode content = properties.putObject("content");
         content.put("type", "string");
-        content.put("description", "Contenu à écrire");
+        content.put("description", "Contenu a ecrire");
 
         schema.putArray("required").add("path").add("content");
-
         return schema;
     }
 }

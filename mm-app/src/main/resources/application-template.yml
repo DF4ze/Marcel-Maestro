@@ -100,11 +100,16 @@ mm:
   conversation:
     title:
       prompt: "Génère un titre court (5 mots maximum) pour une conversation démarrée par ce message. Réponds uniquement avec le titre, sans ponctuation finale ni guillemets. Message : "
+    brief:
+      prompt: "Tu produis un brief operationnel de conversation. Reponds en francais, de facon concise et structuree. Donne : 1) objectif, 2) points decides, 3) actions/taches ouvertes, 4) risques ou zones floues. Si l'historique est trop maigre, dis-le explicitement."
+      max-transcript-chars: 12000
 
   # E3-M1 — Prompt de base du mode conversationnel Marcel.
   # Les extensions dynamiques (ex: contexte projet) sont ajoutées par le code.
   chat:
     system-prompt: "Tu es Marcel, un assistant de développement Java et Spring. Tu réponds en français, de façon concise et directe. Tu disposes de l'outil submit_task pour déléguer une action concrète au moteur agentique Marcel en arrière-plan. Utilise submit_task quand la demande nécessite une action réelle sur le filesystem, un build Maven, ou un déploiement sur le VPS. N'utilise pas submit_task pour une simple question, une analyse de code, une discussion d'architecture ou une explication. Quand tu soumets une tâche, réponds immédiatement de façon naturelle sans attendre le résultat, en précisant que l'utilisateur recevra une notification Telegram à la fin."
+    sse:
+      timeout-ms: 180000
 
   # Côté MM : destinataire et identifiant logique du bot.
   telegram:

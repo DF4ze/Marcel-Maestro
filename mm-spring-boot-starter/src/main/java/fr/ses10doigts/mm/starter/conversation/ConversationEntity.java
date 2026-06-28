@@ -13,23 +13,25 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Entité JPA représentant une conversation Marcel Maestro (E2-M2).
+ * Entite JPA representant une conversation Marcel Maestro (E2-M2).
  *
- * <p>Mappée sur la table {@code conversation} créée par la migration Flyway V3.
- * L'ID ({@code UUID v4}) est également la clé d'isolation mémoire passée à
- * {@code ChatMemory.add(conversationId, message)} — aucun calcul supplémentaire
- * n'est nécessaire pour router les messages Spring AI vers la bonne partition.</p>
+ * <p>Mappee sur la table {@code conversation} creee par les migrations Flyway.
+ * L'ID ({@code UUID v4}) est egalement la cle d'isolation memoire passee a
+ * {@code ChatMemory.add(conversationId, message)} - aucun calcul supplementaire
+ * n'est necessaire pour router les messages Spring AI vers la bonne partition.</p>
  *
- * <p>Le champ {@code title} est nullable : il sera rempli par le LLM en E2-M5
- * (génération automatique de titre). En E2-M2, les conversations n'ont pas de titre.</p>
+ * <p>Le champ {@code title} est nullable : il est rempli par le LLM ou par
+ * renommage manuel. La relation {@code project_id -> project.id} est imposee
+ * par le schema SQL (REFERENCES + ON DELETE CASCADE) sans {@code @ManyToOne}
+ * pour eviter des eager loads inutiles.</p>
  *
- * <p>La relation {@code project_id → project.id} est imposée par le schéma SQL
- * (REFERENCES + ON DELETE CASCADE). La contrainte FK n'est pas répercutée au niveau
- * JPA {@code @ManyToOne} pour éviter des eager loads non désirés ; le service
- * vérifie l'existence du projet avant insertion.</p>
+ * <p>E3-M5 choisit une colonne persistee pour {@code messageCount} et
+ * {@code lastMessageAt} via Flyway V4 plutot qu'une requete native sur
+ * {@code SPRING_AI_CHAT_MEMORY} : la lecture REST reste ainsi decouplee du
+ * schema interne Spring AI.</p>
  *
- * <p>Cette entité ne doit jamais remonter dans {@code mm-core} : le noyau ne
- * connaît que des records domaine ou des ports (ADR-002, ADR-003).</p>
+ * <p>Cette entite ne doit jamais remonter dans {@code mm-core} : le noyau ne
+ * connait que des records domaine ou des ports (ADR-002, ADR-003).</p>
  */
 @Entity
 @Table(name = "conversation")
@@ -41,28 +43,26 @@ import lombok.Setter;
 public class ConversationEntity {
 
     /**
-     * UUID v4 généré par {@code ConversationService} avant insertion.
-     * Sert également de clé d'isolation mémoire ({@code conversationId} Spring AI).
+     * UUID v4 genere par {@code ConversationService} avant insertion.
+     * Sert egalement de cle d'isolation memoire ({@code conversationId} Spring AI).
      */
     @Id
     @Column(nullable = false)
     private String id;
 
     /**
-     * ID du projet propriétaire. Clé étrangère vers {@code project.id}.
-     * La contrainte ON DELETE CASCADE est portée par le schéma Flyway V3.
+     * ID du projet proprietaire. Cle etrangere vers {@code project.id}.
      */
     @Column(name = "project_id", nullable = false)
     private String projectId;
 
     /**
-     * Titre optionnel de la conversation (couture pour E2-M5 — LLM title).
-     * Nullable en E2-M2, aucune logique associée.
+     * Titre optionnel de la conversation.
      */
     @Column
     private String title;
 
-    /** Timestamp de création, ISO-8601 (TEXT dans SQLite, compatible JPA). */
+    /** Timestamp de creation, ISO-8601 (TEXT dans SQLite, compatible JPA). */
     @Column(name = "started_at", nullable = false)
     private String startedAt;
 
@@ -71,4 +71,13 @@ public class ConversationEntity {
     @Column(nullable = false)
     @Builder.Default
     private ConversationStatus status = ConversationStatus.OPEN;
+
+    /** Nombre total de messages persistés pour cette conversation. */
+    @Column(name = "message_count", nullable = false)
+    @Builder.Default
+    private int messageCount = 0;
+
+    /** Horodatage ISO-8601 du dernier message persiste, null si aucun message. */
+    @Column(name = "last_message_at")
+    private String lastMessageAt;
 }

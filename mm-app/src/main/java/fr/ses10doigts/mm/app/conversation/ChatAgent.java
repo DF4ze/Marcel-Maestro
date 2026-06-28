@@ -7,6 +7,9 @@ import fr.ses10doigts.mm.core.orchestration.Dispatcher;
 import fr.ses10doigts.mm.core.queue.TaskQueue;
 import fr.ses10doigts.mm.core.tool.PathValidator;
 import fr.ses10doigts.mm.core.tool.ToolException;
+import fr.ses10doigts.mm.starter.conversation.ConversationTaskEntity;
+import fr.ses10doigts.mm.starter.conversation.ConversationTaskRepository;
+import fr.ses10doigts.mm.starter.conversation.ConversationTaskStatus;
 import fr.ses10doigts.mm.starter.hitl.AgentContextHolder;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.mm.starter.project.ProjectRepository;
@@ -28,6 +31,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 @Service
 @RequiredArgsConstructor
@@ -43,10 +47,18 @@ public class ChatAgent {
     private final ProjectRepository projectRepository;
     private final ProjectWorkspaceRepository projectWorkspaceRepository;
     private final PathValidator pathValidator;
+    private final ConversationTaskRepository conversationTaskRepository;
 
     @Value("${mm.chat.context.max-file-read-chars:5000}")
     private int maxFileReadChars;
 
+    /**
+     * Envoie un message utilisateur au LLM et retourne la reponse complete.
+     *
+     * @param conversationId identifiant de conversation Spring AI
+     * @param userMessage message utilisateur
+     * @return reponse assistant complete
+     */
     public String chat(String conversationId, String userMessage) {
         long startedAt = System.currentTimeMillis();
         log.info("ChatAgent demarre - conversationId={}", conversationId);
@@ -64,6 +76,26 @@ public class ChatAgent {
         long durationMs = System.currentTimeMillis() - startedAt;
         log.info("ChatAgent termine - conversationId={}, durationMs={}", conversationId, durationMs);
         return content == null ? "" : content;
+    }
+
+    /**
+     * Envoie un message utilisateur au LLM et retourne un flux de tokens.
+     *
+     * @param conversationId identifiant de conversation Spring AI
+     * @param userMessage message utilisateur
+     * @return flux de tokens assistant
+     */
+    public Flux<String> stream(String conversationId, String userMessage) {
+        log.info("ChatAgent stream demarre - conversationId={}", conversationId);
+        return chatClient.prompt()
+                .advisors(spec -> spec
+                        .advisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+                        .param(ChatMemory.CONVERSATION_ID, conversationId))
+                .system(promptComposer.compose())
+                .tools(this)
+                .user(userMessage)
+                .stream()
+                .content();
     }
 
     @Tool(name = "submit_task",
@@ -95,11 +127,20 @@ public class ChatAgent {
                         taskId));
 
         taskQueue.submit(taskMessage);
+        conversationTaskRepository.save(ConversationTaskEntity.builder()
+                .id(UUID.randomUUID().toString())
+                .conversationId(currentContext.conversationId())
+                .taskId(taskId)
+                .submittedAt(java.time.Instant.now().toString())
+                .status(ConversationTaskStatus.RUNNING)
+                .build());
         log.info("submit_task execute - taskId={}, projectId={}, conversationId={}, description='{}'",
                 taskId,
                 currentContext.projectId(),
                 currentContext.conversationId(),
                 truncate(description, 80));
+        log.info("submit_task persiste - taskId={}, conversationId={}",
+                taskId, currentContext.conversationId());
         return "Tache soumise - id: " + taskId;
     }
 

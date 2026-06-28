@@ -48,6 +48,12 @@ pas le scan du filesystem.
 
 Pas de corbeille en V2 (différé). La suppression est définitive.
 
+**Complément effectivement livré** :
+- un projet système par défaut `Autre` est créé automatiquement au démarrage ;
+- il sert de projet "fourre-tout" pour des questions sans rapport entre elles ;
+- il est protégé applicativement : pas de renommage, pas d'archivage, pas de suppression ;
+- il reste forcé en statut `ACTIVE` et constitue le projet par défaut intouchable.
+
 ### 2.3 Conversation = session
 
 Une conversation est une session de travail sur un projet. Elle contient 1..N tâches.
@@ -82,6 +88,10 @@ dans la même migration que les tables projet/conversation.
 
 **Sécurité** : le bypass HITL write est limité aux dossiers déclarés. Tout chemin hors
 workspace interne ET hors dossiers externes déclarés reste soumis au HITL normal.
+
+**Complément effectivement livré** :
+- le `PROJECT.md` du projet système `Autre` est spécifique : il explique que cet espace
+  sert aux demandes hétérogènes et n'a pas vocation à porter un cadrage projet durable.
 
 ### 2.6 Règle HITL Projet renforcée
 
@@ -169,6 +179,10 @@ externes et ses conversations en base. Le filesystem est nettoyé par le service
 | `POST` | `/projects/{id}/workspaces` | Ajouter un dossier externe |
 | `DELETE` | `/projects/{id}/workspaces/{wsId}` | Retirer un dossier externe |
 
+Complément effectivement livré :
+- les mutations REST sur le projet système `Autre` renvoient désormais un `409 Conflict`
+  (`archive`, `unarchive`, `delete`, renommage).
+
 ### Conversations
 
 | Méthode | Endpoint | Action |
@@ -201,6 +215,11 @@ La liste des dossiers externes est injectée depuis le `ProjectRepository` via l
 - Toutes les notifications préfixées avec `[NomProjet]`
 - Notion de "projet actif Telegram" : variable de session par `chatId`
 - Commandes ajoutées : `/projects` (liste), `/switch <name>` (changer le projet actif)
+
+Compléments effectivement livrés :
+- le projet système `Autre` apparaît comme projet actif par défaut dans les listes ;
+- les actions interdites sur `Autre` ne sont plus proposées dans les vues Telegram récentes
+  (`archiver` / `supprimer` masqués côté boutons projet).
 
 ### Dispatcher
 Pas de changement architectural. Le virtual thread executor remplace simplement le
@@ -307,6 +326,8 @@ Chaque milestone livre une tranche verticale fonctionnelle.
 - `spring.threads.virtual.enabled=true` + suppression du `ThreadPoolTaskExecutor` explicite
 - Entité `Project` (JPA), `ProjectRepository`, migration Flyway V2
 - `ProjectService` : create (sanitize + créer dossier), archive, unarchive, delete (DB + filesystem), import
+- `ProjectService` : garantit aussi l'existence du projet système `Autre`, son `PROJECT.md`
+  dédié, et bloque toute mutation destructive ou structurelle sur ce projet
 - Validation : collision de `sanitizedName` → rejet avec message explicite
 - `ProjectController` REST : CRUD complet + `/import` + gestion des dossiers externes
 - Tests : cycle CRUD, collision de nom, suppression filesystem, import de dossier existant
@@ -363,6 +384,32 @@ Chaque milestone livre une tranche verticale fonctionnelle.
 - Commande `/projects` : liste les projets actifs avec leur nombre de conversations ouvertes
 - Commande `/switch <name>` : change le projet actif de la session Telegram (stocké par `chatId`)
 - Tests : titre généré et persisté ; switch Telegram isole bien les conversations
+
+---
+
+## 7.1 Strategie de qualification des tests
+
+La base de code doit conserver trois lanes d'execution Maven :
+
+- `mvn test` : lane **rapide** par defaut
+- `mvn test -Pslow-tests` : lane **rapide + lent**
+- `mvn test -Pfull-tests` : lane **full** automatisable
+
+Tout nouveau test doit donc etre **qualifie au moment de son ecriture** :
+
+- **Rapide** : unitaire ou slice leger, sans demarrage Spring complet, sans DB/Flyway, sans timeout metier
+- **Lent** : `@SpringBootTest`, `@WebMvcTest`, SQLite/JPA/Flyway, MockMvc, filesystem notable
+- **Tres lent** : timeout explicite, attente longue, ou integration lourde avec cout cumule important
+
+Traduction attendue dans le code :
+
+- `@Tag("slow")` pour les tests lents
+- `@Tag("very-slow")` pour les tests tres lents
+- `@Tag("spike")` pour les spikes hors full standard
+- `@Tag("manual")` pour les tests manuels
+
+Regle de conception importante : **un test qui verifie un timeout est classe tres lent**,
+meme si le timeout est artificiellement raccourci pour accelerer le run.
 
 ---
 

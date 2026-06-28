@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import fr.ses10doigts.mm.app.conversation.ConversationService;
 import fr.ses10doigts.mm.app.project.ProjectService;
+import fr.ses10doigts.mm.starter.conversation.ConversationEntity;
 import fr.ses10doigts.mm.starter.conversation.ConversationRepository;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.mm.starter.project.ProjectRepository;
@@ -250,6 +251,37 @@ class TelegramSessionServiceTest {
 
         assertThat(counts).doesNotContainKey(projectA.getId())
                 .containsEntry(projectB.getId(), 1L);
+    }
+
+    @Test
+    @DisplayName("listOpenConversationsForProject trie par activite recente")
+    void listOpenConversationsForProject_sortedByActivity() throws Exception {
+        ConversationEntity older = conversationService.startConversation(projectA.getId());
+        ConversationEntity newer = conversationService.startConversation(projectA.getId());
+
+        conversationService.addMessage(older.getId(), "Message ancien");
+        Thread.sleep(5L);
+        conversationService.addMessage(newer.getId(), "Message recent");
+
+        List<ConversationEntity> conversations = sessionService.listOpenConversationsForProject(projectA.getId(), 5);
+
+        assertThat(conversations).extracting(ConversationEntity::getId)
+                .containsExactly(newer.getId(), older.getId());
+    }
+
+    @Test
+    @DisplayName("conversationSuggestions se resolvent par index uniquement si OPEN")
+    void conversationSuggestions_resolveByIndex_onlyOpen() {
+        ConversationEntity openConversation = conversationService.startConversation(projectA.getId());
+        ConversationEntity archivedConversation = conversationService.startConversation(projectA.getId());
+        conversationService.archive(archivedConversation.getId());
+
+        sessionService.setConversationSuggestions(42L, List.of(openConversation.getId(), archivedConversation.getId()));
+
+        assertThat(sessionService.resolveConversationSuggestion(42L, 0))
+                .hasValueSatisfying(conversation ->
+                        assertThat(conversation.getId()).isEqualTo(openConversation.getId()));
+        assertThat(sessionService.resolveConversationSuggestion(42L, 1)).isEmpty();
     }
 
     @Test

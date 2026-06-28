@@ -9,11 +9,13 @@ import fr.ses10doigts.mm.starter.conversation.ConversationRepository;
 import fr.ses10doigts.mm.starter.project.ProjectEntity;
 import fr.ses10doigts.mm.starter.project.ProjectRepository;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.repository.jdbc.JdbcChatMemoryRepository;
 import org.springframework.ai.chat.messages.Message;
@@ -23,24 +25,13 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Tests d'intégration du {@link ConversationService} (E2-M2).
- *
- * <p>Vérifie :</p>
- * <ul>
- *   <li>Isolation mémoire entre conversations (même projet, partitions séparées).</li>
- *   <li>Persistance JDBC (messages lisibles depuis {@link JdbcChatMemoryRepository} directement).</li>
- *   <li>Rejet des projets archivés ({@link ProjectArchivedConversationException}).</li>
- *   <li>Injection correcte du {@code TaskMessage} depuis { TelegramMmController} (E2-M2).</li>
- * </ul>
- *
- * <p>La datasource SQLite in-memory partagée ({@code file:testdb-app?mode=memory&cache=shared})
- * garantit que les données sont visibles entre beans dans le même contexte Spring.
- * Flyway V3 crée {@code SPRING_AI_CHAT_MEMORY} avant les tests.</p>
+ * Tests d'integration du {@link ConversationService}.
  */
 @SpringBootTest
 @ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @Tag("very-slow")
+@Timeout(value = 10, unit = TimeUnit.MINUTES)
 class ConversationServiceTest {
 
     @Autowired
@@ -73,29 +64,26 @@ class ConversationServiceTest {
         projectRepository.deleteAll();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Création
-    // ─────────────────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("startConversation — crée une ConversationEntity avec UUID non-null")
+    @DisplayName("startConversation cree une conversation ouverte avec activite vide")
     void startConversation_createsEntity() {
         ProjectEntity project = projectService.create("Test Projet Conv");
+
         ConversationEntity conv = conversationService.startConversation(project.getId());
 
         assertThat(conv.getId()).isNotNull().isNotBlank();
         assertThat(conv.getProjectId()).isEqualTo(project.getId());
         assertThat(conv.getStatus().name()).isEqualTo("OPEN");
         assertThat(conv.getStartedAt()).isNotNull();
-
-        // Vérifie que l'entité est persistée en DB
+        assertThat(conv.getMessageCount()).isZero();
+        assertThat(conv.getLastMessageAt()).isNull();
         assertThat(conversationRepository.findById(conv.getId())).isPresent();
     }
 
     @Test
-    @DisplayName("startConversation sur projet archivé → ProjectArchivedConversationException")
+    @DisplayName("startConversation sur projet archive leve une exception")
     void startConversation_archivedProject_throwsException() {
-        ProjectEntity project = projectService.create("Projet Archivé");
+        ProjectEntity project = projectService.create("Projet Archive");
         projectService.archive(project.getId());
 
         assertThatThrownBy(() -> conversationService.startConversation(project.getId()))
@@ -103,20 +91,89 @@ class ConversationServiceTest {
                 .hasMessageContaining(project.getId());
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Isolation mémoire entre conversations
-    // ─────────────────────────────────────────────────────────────────────────
+    @Test
+    @DisplayName("addMessage met a jour messageCount et lastMessageAt")
+    void addMessage_updatesConversationActivity() {
+        ProjectEntity project = projectService.create("Projet Activite");
+        ConversationEntity conv = conversationService.startConversation(project.getId());
+
+        conversationService.addMessage(conv.getId(), "Premier message");
+
+        ConversationEntity reloaded = conversationService.getConversation(conv.getId());
+        assertThat(reloaded.getMessageCount()).isEqualTo(1);
+        assertThat(reloaded.getLastMessageAt()).isNotNull();
+    }
 
     @Test
-    @DisplayName("Isolation mémoire — deux conversations du même projet ne partagent pas de messages")
+    @DisplayName("rename met a jour le titre")
+    void rename_updatesTitle() {
+        ProjectEntity project = projectService.create("Projet Rename");
+        ConversationEntity conv = conversationService.startConversation(project.getId());
+
+        ConversationEntity renamed = conversationService.rename(conv.getId(), "Titre manuel");
+
+        assertThat(renamed.getTitle()).isEqualTo("Titre manuel");
+        assertThat(conversationService.getConversation(conv.getId()).getTitle()).isEqualTo("Titre manuel");
+    }
+
+    @Test
+    @DisplayName("archive passe le statut a ARCHIVED et rejette un second archivage")
+    void archive_updatesStatusAndRejectsDuplicate() {
+        ProjectEntity project = projectService.create("Projet Archive Conversation");
+        ConversationEntity conv = conversationService.startConversation(project.getId());
+
+        ConversationEntity archived = conversationService.archive(conv.getId());
+
+        assertThat(archived.getStatus().name()).isEqualTo("ARCHIVED");
+        assertThatThrownBy(() -> conversationService.archive(conv.getId()))
+                .isInstanceOf(ConversationAlreadyArchivedException.class);
+    }
+
+    @Test
+    @DisplayName("chat refuse tout nouveau message sur conversation archivee")
+    void chat_archivedConversation_throwsReadOnlyException() {
+        ProjectEntity project = projectService.create("Projet Archive ReadOnly");
+        ConversationEntity conv = conversationService.startConversation(project.getId());
+        conversationService.archive(conv.getId());
+
+        assertThatThrownBy(() -> conversationService.chat(conv.getId(), "Message interdit"))
+                .isInstanceOf(ArchivedConversationReadOnlyException.class);
+    }
+
+    @Test
+    @DisplayName("listByProject filtre par statut et trie les conversations par activite")
+    void listByProject_filtersAndSortsByActivity() throws Exception {
+        ProjectEntity project = projectService.create("Projet Liste Activite");
+        ConversationEntity oldest = conversationService.startConversation(project.getId());
+        ConversationEntity newest = conversationService.startConversation(project.getId());
+        ConversationEntity noMessage = conversationService.startConversation(project.getId());
+
+        conversationService.addMessage(oldest.getId(), "Ancienne activite");
+        Thread.sleep(5L);
+        conversationService.addMessage(newest.getId(), "Nouvelle activite");
+        conversationService.archive(noMessage.getId());
+
+        List<ConversationEntity> openConversations = conversationService.listByProject(project.getId(), "OPEN");
+        List<ConversationEntity> archivedConversations = conversationService.listByProject(project.getId(), "ARCHIVED");
+        List<ConversationEntity> allConversations = conversationService.listByProject(project.getId(), "ALL");
+
+        assertThat(openConversations).extracting(ConversationEntity::getId)
+                .containsExactly(newest.getId(), oldest.getId());
+        assertThat(archivedConversations).extracting(ConversationEntity::getId)
+                .containsExactly(noMessage.getId());
+        assertThat(allConversations).extracting(ConversationEntity::getId)
+                .containsExactly(newest.getId(), oldest.getId(), noMessage.getId());
+    }
+
+    @Test
+    @DisplayName("deux conversations du meme projet ne partagent pas leurs messages")
     void memoryIsolation_betweenConversations() {
         ProjectEntity project = projectService.create("Projet Isolation");
-
         ConversationEntity conv1 = conversationService.startConversation(project.getId());
         ConversationEntity conv2 = conversationService.startConversation(project.getId());
 
         conversationService.addMessage(conv1.getId(), "Message dans conv1");
-        conversationService.addMessage(conv1.getId(), "Deuxième message dans conv1");
+        conversationService.addMessage(conv1.getId(), "Deuxieme message dans conv1");
         conversationService.addMessage(conv2.getId(), "Message dans conv2");
 
         List<Message> messagesConv1 = conversationService.getMessages(conv1.getId());
@@ -124,17 +181,14 @@ class ConversationServiceTest {
 
         assertThat(messagesConv1).hasSize(2);
         assertThat(messagesConv2).hasSize(1);
-
-        // Les messages de conv1 ne sont pas dans conv2
         assertThat(messagesConv2.getFirst().getText()).isEqualTo("Message dans conv2");
     }
 
     @Test
-    @DisplayName("Isolation mémoire — deux projets différents ont des partitions séparées")
+    @DisplayName("deux projets differents ont des partitions memoire separees")
     void memoryIsolation_betweenProjects() {
         ProjectEntity projectA = projectService.create("Projet A");
         ProjectEntity projectB = projectService.create("Projet B");
-
         ConversationEntity convA = conversationService.startConversation(projectA.getId());
         ConversationEntity convB = conversationService.startConversation(projectB.getId());
 
@@ -147,27 +201,22 @@ class ConversationServiceTest {
                 .isEqualTo("Message projet A");
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Persistance JDBC (survie sans redémarrage — même datasource partagée)
-    // ─────────────────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("Persistance JDBC — les messages sont lisibles directement depuis JdbcChatMemoryRepository")
+    @DisplayName("les messages restent lisibles directement depuis JdbcChatMemoryRepository")
     void jdbcPersistence_messagesReadableDirectlyFromRepository() {
         ProjectEntity project = projectService.create("Projet Persist");
         ConversationEntity conv = conversationService.startConversation(project.getId());
 
-        conversationService.addMessage(conv.getId(), "Message persisté en JDBC");
+        conversationService.addMessage(conv.getId(), "Message persiste en JDBC");
 
-        // Lecture directe depuis le repository (bypass ChatMemory cache)
         List<Message> messages = jdbcChatMemoryRepository.findByConversationId(conv.getId());
 
         assertThat(messages).hasSize(1);
-        assertThat(messages.getFirst().getText()).isEqualTo("Message persisté en JDBC");
+        assertThat(messages.getFirst().getText()).isEqualTo("Message persiste en JDBC");
     }
 
     @Test
-    @DisplayName("Persistance JDBC — findConversationIds retourne les IDs persistés")
+    @DisplayName("findConversationIds retourne les IDs persistes")
     void jdbcPersistence_conversationIdsListable() {
         ProjectEntity project = projectService.create("Projet IDs");
         ConversationEntity conv1 = conversationService.startConversation(project.getId());
@@ -181,11 +230,11 @@ class ConversationServiceTest {
     }
 
     @Test
-    @DisplayName("Suppression conversation — la mémoire Spring AI est purgée avant suppression DB")
+    @DisplayName("delete purge la memoire Spring AI avant suppression")
     void deleteConversation_clearsChatMemory() {
         ProjectEntity project = projectService.create("Projet Delete Conv");
         ConversationEntity conv = conversationService.startConversation(project.getId());
-        conversationService.addMessage(conv.getId(), "Message à supprimer");
+        conversationService.addMessage(conv.getId(), "Message a supprimer");
 
         assertThat(jdbcChatMemoryRepository.findByConversationId(conv.getId())).hasSize(1);
 
@@ -195,12 +244,8 @@ class ConversationServiceTest {
         assertThat(jdbcChatMemoryRepository.findByConversationId(conv.getId())).isEmpty();
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Lectures
-    // ─────────────────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("listByProject — retourne uniquement les conversations du projet demandé")
+    @DisplayName("listByProject sans filtre retourne uniquement les conversations du projet")
     void listByProject_returnsOnlyProjectConversations() {
         ProjectEntity projectA = projectService.create("Projet Liste A");
         ProjectEntity projectB = projectService.create("Projet Liste B");
@@ -214,24 +259,19 @@ class ConversationServiceTest {
     }
 
     @Test
-    @DisplayName("getConversation — lève ConversationNotFoundException si ID inconnu")
+    @DisplayName("getConversation leve ConversationNotFoundException si ID inconnu")
     void getConversation_unknownId_throwsNotFound() {
         assertThatThrownBy(() -> conversationService.getConversation("id-inconnu"))
                 .isInstanceOf(ConversationNotFoundException.class)
                 .hasMessageContaining("id-inconnu");
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // TaskMessage injection — AgentContext non-null (E2-M2)
-    // ─────────────────────────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("AgentContext — projectId et conversationId non-null après startConversation")
+    @DisplayName("AgentContext conserve projectId et conversationId")
     void agentContext_projectIdAndConversationIdNonNull() {
         ProjectEntity project = projectService.create("Projet Context");
         ConversationEntity conv = conversationService.startConversation(project.getId());
 
-        // L'AgentContext est construit par l'appelant (Telegram/REST) avec ces valeurs
         fr.ses10doigts.mm.core.agent.AgentContext ctx = fr.ses10doigts.mm.core.agent.AgentContext
                 .of("default", project.getId(), conv.getId(), "task-123");
 

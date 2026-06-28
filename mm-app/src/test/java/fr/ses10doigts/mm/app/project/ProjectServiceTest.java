@@ -10,6 +10,7 @@ import fr.ses10doigts.mm.starter.project.ProjectWorkspaceEntity;
 import fr.ses10doigts.mm.starter.project.ProjectWorkspaceRepository;
 import fr.ses10doigts.mm.app.conversation.ConversationService;
 import fr.ses10doigts.mm.starter.conversation.ConversationEntity;
+import fr.ses10doigts.mm.starter.conversation.ConversationStatus;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -138,6 +139,23 @@ class ProjectServiceTest {
     }
 
     @Test
+    @DisplayName("ensureDefaultMiscProjectExists cree le projet systeme Autre avec un PROJECT.md dedie")
+    void ensureDefaultMiscProjectExists_createsProtectedProjectAndTemplate() throws IOException {
+        ProjectEntity project = projectService.ensureDefaultMiscProjectExists();
+
+        assertThat(project.getName()).isEqualTo(ProjectService.DEFAULT_MISC_PROJECT_NAME);
+        assertThat(project.getSanitizedName()).isEqualTo(ProjectService.DEFAULT_MISC_PROJECT_SLUG);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ACTIVE);
+
+        Path projectFile = Paths.get(project.getWorkspacePath()).resolve("PROJECT.md");
+        assertThat(Files.exists(projectFile)).isTrue();
+        assertThat(Files.readString(projectFile))
+                .contains("projet fourre-tout")
+                .contains("sans rapport entre elles")
+                .contains("projet par defaut");
+    }
+
+    @Test
     @DisplayName("archive → statut passe à ARCHIVED")
     void archiveChangesStatus() {
         ProjectEntity project = projectService.create("projet-a-archiver");
@@ -145,6 +163,30 @@ class ProjectServiceTest {
         ProjectEntity archived = projectService.archive(project.getId());
 
         assertThat(archived.getStatus()).isEqualTo(ProjectStatus.ARCHIVED);
+    }
+
+    @Test
+    @DisplayName("archive refuse le projet systeme Autre")
+    void archiveProtectedProject_throws() {
+        ProjectEntity project = projectService.ensureDefaultMiscProjectExists();
+
+        assertThatThrownBy(() -> projectService.archive(project.getId()))
+                .isInstanceOf(ProtectedProjectMutationException.class)
+                .hasMessageContaining("Autre");
+    }
+
+    @Test
+    @DisplayName("archive cascade l'archivage sur les conversations ouvertes du projet")
+    void archiveCascadesOpenConversations() {
+        ProjectEntity project = projectService.create("projet-archive-cascade");
+        ConversationEntity conv1 = conversationService.startConversation(project.getId());
+        ConversationEntity conv2 = conversationService.startConversation(project.getId());
+
+        projectService.archive(project.getId(), "Fin de vie");
+
+        assertThat(projectService.findById(project.getId()).getStatus()).isEqualTo(ProjectStatus.ARCHIVED);
+        assertThat(conversationService.getConversation(conv1.getId()).getStatus()).isEqualTo(ConversationStatus.ARCHIVED);
+        assertThat(conversationService.getConversation(conv2.getId()).getStatus()).isEqualTo(ConversationStatus.ARCHIVED);
     }
 
     @Test
@@ -171,6 +213,19 @@ class ProjectServiceTest {
 
         assertThat(projectRepository.findById(id)).isEmpty();
         assertThat(Files.exists(dir)).isFalse();
+    }
+
+    @Test
+    @DisplayName("delete refuse le projet systeme Autre")
+    void deleteProtectedProject_throws() {
+        ProjectEntity project = projectService.ensureDefaultMiscProjectExists();
+        Path dir = Paths.get(project.getWorkspacePath());
+
+        assertThatThrownBy(() -> projectService.delete(project.getId()))
+                .isInstanceOf(ProtectedProjectMutationException.class)
+                .hasMessageContaining("Autre");
+        assertThat(projectRepository.findById(project.getId())).isPresent();
+        assertThat(Files.exists(dir)).isTrue();
     }
 
     @Test
@@ -233,10 +288,10 @@ class ProjectServiceTest {
         assertThatThrownBy(() -> projectService.create("double"))
                 .isInstanceOf(ProjectNameConflictException.class);
 
-        // Un seul dossier "double" doit exister
+        // Un seul dossier "double" doit exister en plus du projet systeme "Autre".
         Path root = Paths.get(workspaceProperties.getRoot());
         try (var stream = Files.list(root)) {
-            assertThat(stream.count()).isEqualTo(1);
+            assertThat(stream.filter(path -> path.getFileName().toString().equals("double")).count()).isEqualTo(1);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -249,7 +304,7 @@ class ProjectServiceTest {
     @Test
     @DisplayName("importExisting enregistre le projet sans recréer le dossier")
     void importExistingRegistersWithoutModifyingDirectory() throws IOException {
-        Path existingDir = Paths.get(workspaceProperties.getRoot()).resolve("repo-existant");
+        Path existingDir = Paths.get(workspaceProperties.getRoot()).toAbsolutePath().resolve("repo-existant");
         Files.createDirectories(existingDir);
         Path sentinelFile = existingDir.resolve("README.md");
         Files.writeString(sentinelFile, "contenu existant");

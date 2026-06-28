@@ -58,7 +58,7 @@ public class PathValidator {
      * @param workspaceRegistry registre des dossiers externes ; peut être {@code null}
      */
     public PathValidator(Path workspaceRoot, WorkspaceRegistry workspaceRegistry) {
-        this.workspaceRoot = workspaceRoot;
+        this.workspaceRoot = workspaceRoot.toAbsolutePath().normalize();
         this.workspaceRegistry = workspaceRegistry;
     }
 

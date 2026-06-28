@@ -39,6 +39,14 @@ class PathValidatorTest {
     }
 
     @Test
+    void cheminAbsoluDansWorkspace_accepte() {
+        PathValidator validator = new PathValidator(workspace);
+        String absoluteFile = workspace.resolve("src/Main.java").toAbsolutePath().toString();
+
+        assertDoesNotThrow(() -> validator.validatePath(absoluteFile, null));
+    }
+
+    @Test
     void traversalVersParent_rejete() {
         PathValidator validator = new PathValidator(workspace);
 
